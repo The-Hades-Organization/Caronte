@@ -1,0 +1,23 @@
+[package]
+name = "caronte-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "caronte_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "caronte-app"
+path = "src/main.rs"
+
+[dependencies]
+caronte-core = { path = "../caronte-core" }
+gpui.workspace = true
+gpui_platform.workspace = true
+gpui-component.workspace = true
+
+[lints]
+workspace = true

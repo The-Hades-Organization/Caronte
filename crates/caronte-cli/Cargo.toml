@@ -1,0 +1,17 @@
+[package]
+name = "caronte-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "caronte"
+path = "src/main.rs"
+
+[dependencies]
+caronte-core = { path = "../caronte-core" }
+clap.workspace = true
+
+[lints]
+workspace = true
