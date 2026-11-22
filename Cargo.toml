@@ -9,8 +9,8 @@ license = "MIT"
 repository = "https://github.com/The-Hades-Organization/Caronte"
 
 [workspace.dependencies]
-hades-core = { git = "https://github.com/The-Hades-Organization/Hades-Core", tag = "v0.2.1" }
-hades-ui = { git = "https://github.com/The-Hades-Organization/Hades-UI", tag = "v0.1.1" }
+hades-core = { git = "https://github.com/The-Hades-Organization/Hades-Core", tag = "v0.2.2" }
+hades-ui = { git = "https://github.com/The-Hades-Organization/Hades-UI", tag = "v0.1.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 scrypt = { version = "0.11", default-features = false }
@@ -21,6 +21,7 @@ base64 = "0.22"
 unicode-normalization = "0.1"
 getrandom = "0.2"
 tempfile = "3"
+regex = "1"
 clap = { version = "4", features = ["derive"] }
 gpui = { package = "gpui-pre", version = "=0.3.11" }
 gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", default-features = false, features = ["wayland", "x11"] }

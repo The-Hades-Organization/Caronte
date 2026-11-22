@@ -838,10 +838,12 @@ dependencies = [
  "flate2",
  "getrandom 0.2.17",
  "hades-core",
+ "regex",
  "scrypt",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "unicode-normalization",
 ]
 
@@ -2791,8 +2793,8 @@ dependencies = [
 
 [[package]]
 name = "hades-core"
-version = "0.2.1"
-source = "git+https://github.com/The-Hades-Organization/Hades-Core?tag=v0.2.1#06fb6be03ebf032db612f5143e84ddc71c1a9799"
+version = "0.2.2"
+source = "git+https://github.com/The-Hades-Organization/Hades-Core?tag=v0.2.2#8eb6f30df64d93a07172dc1a64b20f01d5f895b4"
 dependencies = [
  "regex",
  "rustix",
@@ -2802,8 +2804,8 @@ dependencies = [
 
 [[package]]
 name = "hades-ui"
-version = "0.1.1"
-source = "git+https://github.com/The-Hades-Organization/Hades-UI?tag=v0.1.1#e1264b6415a87f43df873b7af5abef59c40f33a3"
+version = "0.1.2"
+source = "git+https://github.com/The-Hades-Organization/Hades-UI?tag=v0.1.2#267a128da2b10b8e25be516b4612b917e2480f6e"
 dependencies = [
  "gpui-component",
  "gpui-pre",
