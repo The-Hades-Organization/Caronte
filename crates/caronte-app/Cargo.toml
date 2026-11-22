@@ -20,10 +20,10 @@ hades-ui.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui-component.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-serde_json.workspace = true

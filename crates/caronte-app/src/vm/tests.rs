@@ -35,7 +35,9 @@ fn teclas_trocam_de_tela() {
     assert_eq!(tela_da_tecla("1"), Some(Tela::Planos));
     assert_eq!(tela_da_tecla("2"), Some(Tela::Previa));
     assert_eq!(tela_da_tecla("0"), None);
-    assert_eq!(tela_da_tecla("3"), None);
+    assert_eq!(tela_da_tecla("3"), Some(Tela::Pacotes));
+    assert_eq!(tela_da_tecla("4"), Some(Tela::Retomar));
+    assert_eq!(tela_da_tecla("5"), None);
     assert_eq!(tela_da_tecla("a"), None);
     assert_eq!(Tela::de_rotulo("Planos"), Some(Tela::Planos));
     assert_eq!(Tela::de_rotulo("nada"), None);
@@ -278,4 +280,84 @@ fn numericas_a_direita() {
     assert!(coluna_numerica("Tamanho"));
     assert!(coluna_numerica("Prontos"));
     assert!(!coluna_numerica("Plano"));
+}
+
+fn cabecalho(json: &str) -> Vec<u8> {
+    let mut b = caronte_core::format::MAGIC.to_vec();
+    b.extend_from_slice(&(json.len() as u32).to_be_bytes());
+    b.extend_from_slice(json.as_bytes());
+    b.extend_from_slice(&[0u8; 32]);
+    b
+}
+
+#[test]
+fn formato_lido_so_do_cabecalho() {
+    assert_eq!(
+        formato_do_cabecalho(&cabecalho(r#"{"v":1,"kdf":"scrypt"}"#)),
+        Some(1)
+    );
+    assert_eq!(
+        formato_do_cabecalho(&cabecalho(r#"{"kdf":"scrypt"}"#)),
+        None
+    );
+    assert_eq!(formato_do_cabecalho(&cabecalho("não é json")), None);
+    assert_eq!(formato_do_cabecalho(b"CARONTE"), None);
+    assert_eq!(formato_do_cabecalho(b"outra coisa qualquer, longa"), None);
+    let mut curto = caronte_core::format::MAGIC.to_vec();
+    curto.extend_from_slice(&999u32.to_be_bytes());
+    curto.extend_from_slice(b"{}");
+    assert_eq!(formato_do_cabecalho(&curto), None);
+}
+
+#[test]
+fn pacotes_ordenam_e_formatam() {
+    let mut l = vec![
+        PacoteResumo {
+            nome: "b.caronte".into(),
+            caminho: "/o/b.caronte".into(),
+            tamanho: 2048,
+            modificado_ms: 10,
+            formato: Some(1),
+        },
+        PacoteResumo {
+            nome: "a.caronte".into(),
+            caminho: "/o/a.caronte".into(),
+            tamanho: 10,
+            modificado_ms: 10,
+            formato: None,
+        },
+        PacoteResumo {
+            nome: "c.caronte".into(),
+            caminho: "/o/c.caronte".into(),
+            tamanho: 1,
+            modificado_ms: 99,
+            formato: Some(1),
+        },
+    ];
+    ordenar_pacotes(&mut l);
+    let nomes: Vec<_> = l.iter().map(|p| p.nome.as_str()).collect();
+    assert_eq!(nomes, ["c.caronte", "a.caronte", "b.caronte"]);
+    let linhas = linhas_pacotes(&l, 100);
+    assert_eq!(linhas[1][3], "ilegível");
+    assert_eq!(linhas[2][3], "v1");
+}
+
+#[test]
+fn comandos_de_retomada_e_unpack() {
+    assert_eq!(
+        comando_unpack("/o/a b.caronte"),
+        "! hades caronte unpack '/o/a b.caronte'"
+    );
+    assert_eq!(
+        comando_unpack("/o/a.caronte"),
+        "! hades caronte unpack /o/a.caronte"
+    );
+    assert_eq!(
+        comando_workspace("/w/fake-a", "fake-a"),
+        "herdr workspace create --cwd /w/fake-a --label hd-fake-a --no-focus"
+    );
+    assert_eq!(
+        comando_adopt("x"),
+        "hades agent adopt x && hades agent resume x"
+    );
 }

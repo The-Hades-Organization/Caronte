@@ -18,8 +18,9 @@ use hades_ui::palette;
 
 use crate::service;
 use crate::vm::{
-    self, COLUNAS_ACHADOS, COLUNAS_AGENTES, COLUNAS_PARTES, COLUNAS_PLANOS, COLUNAS_WORKTREES,
-    CachePrevia, Estacionando, EstadoPrevia, PlanoResumo, Tarefa, Tela,
+    self, COLUNAS_ACHADOS, COLUNAS_AGENTES, COLUNAS_PACOTES, COLUNAS_PARTES, COLUNAS_PLANOS,
+    COLUNAS_WORKTREES, CachePrevia, Estacionando, EstadoPrevia, EstadoRetomada, PacoteResumo,
+    PlanoResumo, Tarefa, Tela,
 };
 
 const PERIODO_MS: u64 = 500;
@@ -41,6 +42,11 @@ pub struct CaronteView {
     tique: u32,
     t_planos: Tarefa,
     t_previa: Tarefa,
+    pacotes: Vec<PacoteResumo>,
+    pacote: Option<String>,
+    t_pacotes: Tarefa,
+    retomada: EstadoRetomada,
+    t_retomada: Tarefa,
     estacionando: Estacionando,
 }
 
@@ -60,6 +66,11 @@ impl CaronteView {
             tique: 0,
             t_planos: Tarefa::default(),
             t_previa: Tarefa::default(),
+            pacotes: Vec::new(),
+            pacote: None,
+            t_pacotes: Tarefa::default(),
+            retomada: EstadoRetomada::SemPlano,
+            t_retomada: Tarefa::default(),
             estacionando: Estacionando::default(),
             env,
             cwd,
@@ -113,6 +124,8 @@ impl CaronteView {
             self.agente = None;
             self.previa = EstadoPrevia::SemPlano;
             self.t_previa.invalidar();
+            self.retomada = EstadoRetomada::SemPlano;
+            self.t_retomada.invalidar();
         }
     }
 
@@ -129,8 +142,12 @@ impl CaronteView {
         self.agente = None;
         self.t_previa.invalidar();
         self.previa = EstadoPrevia::SemPlano;
-        if self.tela == Tela::Previa {
-            self.carregar_previa(cx);
+        self.t_retomada.invalidar();
+        self.retomada = EstadoRetomada::SemPlano;
+        match self.tela {
+            Tela::Previa => self.carregar_previa(cx),
+            Tela::Retomar => self.carregar_retomada(cx),
+            _ => {}
         }
     }
 
@@ -218,6 +235,11 @@ impl CaronteView {
         self.tique = self.tique.wrapping_add(1);
         if self.tique.is_multiple_of(TIQUES_PLANOS) {
             self.recarregar_planos(cx);
+            match self.tela {
+                Tela::Pacotes => self.carregar_pacotes(cx),
+                Tela::Retomar => self.carregar_retomada(cx),
+                _ => {}
+            }
         }
     }
 
@@ -237,9 +259,73 @@ impl CaronteView {
 
     fn mudar_tela(&mut self, tela: Tela, cx: &mut Context<Self>) {
         self.tela = tela;
-        if tela == Tela::Previa {
-            self.carregar_previa(cx);
+        match tela {
+            Tela::Previa => self.carregar_previa(cx),
+            Tela::Pacotes => self.carregar_pacotes(cx),
+            Tela::Retomar => self.carregar_retomada(cx),
+            Tela::Planos => {}
         }
+    }
+
+    /// Lista a pasta de pacotes no executor de fundo: metadados e cabeçalho em claro, nunca o conteúdo cifrado.
+    fn carregar_pacotes(&mut self, cx: &mut Context<Self>) {
+        let Some(g) = self.t_pacotes.iniciar() else {
+            return;
+        };
+        let pasta = service::pasta_de_pacotes(&self.env, &self.cwd);
+        cx.spawn(async move |this, cx| {
+            let lista = cx
+                .background_executor()
+                .spawn(async move { service::listar_pacotes(&pasta) })
+                .await;
+            let _ = this.update(cx, |v, cx| {
+                if !v.t_pacotes.concluir(g) {
+                    return;
+                }
+                if let Some(c) = &v.pacote
+                    && !lista.iter().any(|p| &p.caminho == c)
+                {
+                    v.pacote = None;
+                }
+                v.pacotes = lista;
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Prompt e passos de retomada do plano selecionado; o `start_command` lê a config, então roda em fundo.
+    fn carregar_retomada(&mut self, cx: &mut Context<Self>) {
+        let (Some(nome), Some(work)) = (self.plano.clone(), self.work.clone()) else {
+            self.t_retomada.invalidar();
+            self.retomada = EstadoRetomada::SemPlano;
+            return;
+        };
+        let Some(g) = self.t_retomada.iniciar() else {
+            return;
+        };
+        if !matches!(self.retomada, EstadoRetomada::Pronta(_)) {
+            self.retomada = EstadoRetomada::Carregando;
+        }
+        let (env, cwd) = (self.env.clone(), self.cwd.clone());
+        cx.spawn(async move |this, cx| {
+            let pasta = service::pasta_de_planos(&env);
+            let r = cx
+                .background_executor()
+                .spawn(async move { service::retomada(&env, &cwd, &work, &pasta, &nome) })
+                .await;
+            let _ = this.update(cx, |v, cx| {
+                if !v.t_retomada.concluir(g) {
+                    return;
+                }
+                v.retomada = match r {
+                    Ok(r) => EstadoRetomada::Pronta(Box::new(r)),
+                    Err(e) => EstadoRetomada::Falhou(e),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn titulo(&self) -> String {
@@ -265,10 +351,12 @@ impl CaronteView {
         let entidade = cx.entity();
         let itens = Tela::TODAS.map(|t| {
             let item = RailItem::new(t.rotulo());
-            if t == Tela::Planos {
-                item.badge(self.planos.len().to_string())
-            } else {
-                item
+            match t {
+                Tela::Planos => item.badge(self.planos.len().to_string()),
+                Tela::Pacotes if !self.pacotes.is_empty() => {
+                    item.badge(self.pacotes.len().to_string())
+                }
+                _ => item,
             }
         });
         Rail::new([RailGroup::new("Caronte", itens)])
@@ -489,6 +577,116 @@ impl CaronteView {
     }
 }
 
+impl CaronteView {
+    fn tela_pacotes(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let entidade = cx.entity();
+        let mut coluna = div()
+            .flex()
+            .flex_col()
+            .gap(px(14.0))
+            .child(PageHeader::new("Pacotes"));
+        if self.pacotes.is_empty() {
+            let pasta = service::pasta_de_pacotes(&self.env, &self.cwd);
+            return coluna
+                .child(EmptyState::new("Nenhum pacote").hint(format!(
+                    "Os pacotes .caronte ficam em {}; gere um com o pack no terminal.",
+                    pasta.display()
+                )))
+                .into_any_element();
+        }
+        let mut tabela = DataTable::new(colunas(&COLUNAS_PACOTES));
+        for l in vm::linhas_pacotes(&self.pacotes, service::agora_ms()) {
+            tabela = tabela.row(l.into_iter().map(SharedString::from));
+        }
+        if let Some(i) = self
+            .pacote
+            .as_ref()
+            .and_then(|c| self.pacotes.iter().position(|p| &p.caminho == c))
+        {
+            tabela = tabela.selected(i);
+        }
+        tabela = tabela.on_select(move |i, _, cx| {
+            entidade.update(cx, |v, cx| {
+                v.pacote = v.pacotes.get(i).map(|p| p.caminho.clone());
+                cx.notify();
+            });
+        });
+        coluna = coluna.child(tabela);
+        let Some(p) = self
+            .pacote
+            .as_ref()
+            .and_then(|c| self.pacotes.iter().find(|p| &p.caminho == c))
+        else {
+            return coluna
+                .child(
+                    EmptyState::new("Selecione um pacote")
+                        .hint("O app mostra o comando de unpack; a senha é pedida só no terminal."),
+                )
+                .into_any_element();
+        };
+        let comando = vm::comando_unpack(&p.caminho);
+        coluna
+            .child(
+                TermBlock::new()
+                    .dim("# a senha vai no terminal, sem eco; o app não abre nem decifra pacote")
+                    .line(comando.clone()),
+            )
+            .child(CopyButton::new("copiar-unpack", comando))
+            .into_any_element()
+    }
+
+    fn tela_retomar(&self) -> gpui::AnyElement {
+        let titulo = self
+            .plano
+            .clone()
+            .map_or_else(|| "Retomar".to_owned(), |p| format!("Retomar · {p}"));
+        let coluna = div()
+            .flex()
+            .flex_col()
+            .gap(px(14.0))
+            .child(PageHeader::new(titulo));
+        match &self.retomada {
+            EstadoRetomada::SemPlano => coluna
+                .child(
+                    EmptyState::new("Nenhum plano selecionado")
+                        .hint("Escolha um plano na tela Planos para ver o prompt de retomada."),
+                )
+                .into_any_element(),
+            EstadoRetomada::Carregando => coluna
+                .child(EmptyState::new("Montando a retomada…"))
+                .into_any_element(),
+            EstadoRetomada::Falhou(motivo) => coluna
+                .child(EmptyState::new("A retomada falhou").hint(motivo.clone()))
+                .into_any_element(),
+            EstadoRetomada::Pronta(r) => {
+                let mut coluna = coluna;
+                if r.agentes.is_empty() {
+                    coluna = coluna.child(EmptyState::new("Nenhum agente estacionado").hint(
+                        "Depois do unpack, os agentes estacionados do plano aparecem aqui com os passos para retomar.",
+                    ));
+                }
+                for a in &r.agentes {
+                    coluna = coluna.child(
+                        TermBlock::new()
+                            .dim(format!("# {}", a.nome))
+                            .line(a.workspace.clone())
+                            .line(a.iniciar.clone())
+                            .line(a.adotar.clone()),
+                    );
+                }
+                let mut prompt = TermBlock::new().dim("# prompt do orquestrador");
+                for linha in r.prompt.lines() {
+                    prompt = prompt.line(linha.to_owned());
+                }
+                coluna
+                    .child(prompt)
+                    .child(CopyButton::new("copiar-prompt", r.prompt.clone()))
+                    .into_any_element()
+            }
+        }
+    }
+}
+
 fn colunas(nomes: &[&str]) -> Vec<(SharedString, Align)> {
     nomes
         .iter()
@@ -511,6 +709,8 @@ impl Render for CaronteView {
         let corpo = match self.tela {
             Tela::Planos => self.tela_planos(cx),
             Tela::Previa => self.tela_previa(),
+            Tela::Pacotes => self.tela_pacotes(cx),
+            Tela::Retomar => self.tela_retomar(),
         };
         div()
             .id("caronte")

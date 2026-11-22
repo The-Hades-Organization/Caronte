@@ -9,6 +9,8 @@ use caronte_core::manifest::WorktreeInfo;
 use caronte_core::plan::{PackPreview, PlanAgent, Readiness};
 use hades_ui::Tone;
 
+/// Teto de pacotes listados (PC:45, `MAX_PACKAGES`).
+pub const MAX_PACOTES: usize = 200;
 /// Teto de planos listados (PC:44, `MAX_PLANS`).
 pub const MAX_PLANOS: usize = 100;
 /// Validade da prévia em cache (PC:46, `PREVIEW_TTL_MS`).
@@ -22,22 +24,27 @@ pub const COLUNAS_PLANOS: [&str; 4] = ["Plano", "Agentes", "Prontos", "Atualizad
 pub const COLUNAS_AGENTES: [&str; 4] = ["Agente", "Estado", "Prontidão", "Worktree"];
 pub const COLUNAS_PARTES: [&str; 2] = ["Parte", "Tamanho"];
 pub const COLUNAS_WORKTREES: [&str; 5] = ["Agente", "Branch", "Head", "Bundle", "Patch"];
+pub const COLUNAS_PACOTES: [&str; 4] = ["Pacote", "Tamanho", "Atualizado", "Formato"];
 pub const COLUNAS_ACHADOS: [&str; 2] = ["Caminho", "Regra"];
 
-/// Telas da navegação lateral (`design/caronte.html`); Pacotes e Retomar entram na PR 11.
+/// Telas da navegação lateral (`design/caronte.html`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tela {
     Planos,
     Previa,
+    Pacotes,
+    Retomar,
 }
 
 impl Tela {
-    pub const TODAS: [Tela; 2] = [Tela::Planos, Tela::Previa];
+    pub const TODAS: [Tela; 4] = [Tela::Planos, Tela::Previa, Tela::Pacotes, Tela::Retomar];
 
     pub fn rotulo(self) -> &'static str {
         match self {
             Tela::Planos => "Planos",
             Tela::Previa => "Prévia do pack",
+            Tela::Pacotes => "Pacotes",
+            Tela::Retomar => "Retomar",
         }
     }
 
@@ -46,7 +53,7 @@ impl Tela {
     }
 }
 
-/// Atalho: teclas 1 e 2 trocam de tela, como o clique no `Rail`.
+/// Atalho: teclas 1 a 4 trocam de tela, como o clique no `Rail`.
 pub fn tela_da_tecla(tecla: &str) -> Option<Tela> {
     let n: usize = tecla.parse().ok()?;
     Tela::TODAS.get(n.checked_sub(1)?).copied()
@@ -198,6 +205,94 @@ pub fn comando_pack(plano: &str, allow: &[String]) -> String {
         comando.push_str(&format!(" --allow {}", aspas(caminho)));
     }
     comando
+}
+
+/// O unpack pede a senha no tty: o app mostra o comando e nunca abre nem cifra pacote.
+pub fn comando_unpack(arquivo: &str) -> String {
+    format!("! hades caronte unpack {}", aspas(arquivo))
+}
+
+pub fn comando_workspace(worktree: &str, agente: &str) -> String {
+    format!(
+        "herdr workspace create --cwd {} --label hd-{agente} --no-focus",
+        aspas(worktree)
+    )
+}
+
+pub fn comando_adopt(agente: &str) -> String {
+    format!("hades agent adopt {agente} && hades agent resume {agente}")
+}
+
+/// Pacote `.caronte` da pasta de saída; só metadados do arquivo e do cabeçalho, nunca o conteúdo cifrado.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PacoteResumo {
+    pub nome: String,
+    pub caminho: String,
+    pub tamanho: u64,
+    pub modificado_ms: u64,
+    pub formato: Option<i64>,
+}
+
+/// Mais novo primeiro; empate pelo nome (PC:123-131).
+pub fn ordenar_pacotes(pacotes: &mut [PacoteResumo]) {
+    pacotes.sort_by(|a, b| {
+        b.modificado_ms
+            .cmp(&a.modificado_ms)
+            .then_with(|| a.nome.cmp(&b.nome))
+    });
+}
+
+pub fn linhas_pacotes(pacotes: &[PacoteResumo], agora_ms: u64) -> Vec<[String; 4]> {
+    pacotes
+        .iter()
+        .map(|p| {
+            [
+                p.nome.clone(),
+                bytes(p.tamanho as usize),
+                idade(agora_ms, p.modificado_ms),
+                p.formato
+                    .map_or_else(|| "ilegível".to_owned(), |v| format!("v{v}")),
+            ]
+        })
+        .collect()
+}
+
+/// Versão do formato (`v`) lida só do cabeçalho em claro: MAGIC, u32 BE do tamanho e JSON. Sem senha, sem decifrar.
+pub fn formato_do_cabecalho(inicio: &[u8]) -> Option<i64> {
+    let magic = caronte_core::format::MAGIC;
+    let corpo = inicio.strip_prefix(magic.as_slice())?;
+    let (tam, resto) = corpo.split_at_checked(4)?;
+    let tam = u32::from_be_bytes(tam.try_into().ok()?) as usize;
+    let json: serde_json::Value = serde_json::from_slice(resto.get(..tam)?).ok()?;
+    json.get("v")?.as_i64()
+}
+
+/// Bytes a ler do começo do arquivo para cobrir o cabeçalho (teto do formato: 4096, mais MAGIC e tamanho).
+pub const BYTES_CABECALHO: usize = 8 + 4 + 4096;
+
+/// Passos de retomada de um agente estacionado, como `resumeLines` imprime (CC:236-249).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RetomadaAgente {
+    pub nome: String,
+    pub workspace: String,
+    pub iniciar: String,
+    pub adotar: String,
+}
+
+/// Prompt do orquestrador e os passos por agente do plano selecionado.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Retomada {
+    pub prompt: String,
+    pub agentes: Vec<RetomadaAgente>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum EstadoRetomada {
+    #[default]
+    SemPlano,
+    Carregando,
+    Pronta(Box<Retomada>),
+    Falhou(String),
 }
 
 pub fn comando_dry_run(plano: &str) -> String {

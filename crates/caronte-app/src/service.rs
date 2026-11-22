@@ -5,7 +5,11 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use caronte_core::gitx::SystemGit;
-use caronte_core::plan::{GatherOptions, PackPreview, PlanAgent, plan_agents, preview_pack};
+use caronte_core::plan::{
+    GatherOptions, PackPreview, PlanAgent, Readiness, linked_agents, plan_agents, preview_pack,
+    resume_prompt,
+};
+use caronte_core::start::start_command;
 use hades_core::Env;
 use hades_core::config::config_value;
 use hades_core::fsx::{is_dir, list_dir, read_text};
@@ -15,11 +19,12 @@ use hades_core::proc::{RunOptions, run, which};
 use hades_core::work::{WorkEnv, WorkOptions, load_work_env};
 
 use crate::vm::{
-    self, ESPERA_PARK_PADRAO_S, MAX_PLANOS, PlanoResumo, SAIDA_PARK_MAX, estado_assentado,
-    plano_valido,
+    self, BYTES_CABECALHO, ESPERA_PARK_PADRAO_S, MAX_PACOTES, MAX_PLANOS, PacoteResumo,
+    PlanoResumo, Retomada, RetomadaAgente, SAIDA_PARK_MAX, estado_assentado, plano_valido,
 };
 
 const EXTENSAO_PLANO: &str = ".md";
+const EXTENSAO_PACOTE: &str = ".caronte";
 const EXTENSAO_LOG: &str = ".log.md";
 const CHAVE_ESPERA_PARK: &str = "HADES_ARGOS_ACTION_TIMEOUT_S";
 
@@ -39,6 +44,89 @@ pub fn carregar_raiz(env: &Env, cwd: &Path) -> Result<WorkEnv, HadesError> {
         },
         env,
     )
+}
+
+/// Pasta dos pacotes: `HADES_CARONTE_OUT_DIR` ou `<hades_home>/caronte` (CC:109-113).
+pub fn pasta_de_pacotes(env: &Env, cwd: &Path) -> PathBuf {
+    let configurada = config_value(env, cwd, "HADES_CARONTE_OUT_DIR", "");
+    if configurada.is_empty() {
+        hades_home(env).join("caronte")
+    } else {
+        PathBuf::from(configurada)
+    }
+}
+
+/// Pacotes `.caronte` da pasta, do mais novo ao mais antigo, até 200 (PC:123-131). Lê só o começo de cada arquivo
+/// (o cabeçalho em claro): o conteúdo cifrado nunca é lido.
+pub fn listar_pacotes(pasta: &Path) -> Vec<PacoteResumo> {
+    let mut pacotes: Vec<PacoteResumo> = list_dir(pasta)
+        .into_iter()
+        .filter(|nome| nome.ends_with(EXTENSAO_PACOTE))
+        .filter_map(|nome| {
+            let caminho = pasta.join(&nome);
+            let meta = std::fs::metadata(&caminho).ok().filter(|m| m.is_file())?;
+            Some(PacoteResumo {
+                formato: cabecalho_do_arquivo(&caminho),
+                tamanho: meta.len(),
+                modificado_ms: modificado_ms(&caminho),
+                caminho: caminho.to_string_lossy().into_owned(),
+                nome,
+            })
+        })
+        .collect();
+    vm::ordenar_pacotes(&mut pacotes);
+    pacotes.truncate(MAX_PACOTES);
+    pacotes
+}
+
+fn cabecalho_do_arquivo(caminho: &Path) -> Option<i64> {
+    use std::io::Read;
+    let mut inicio = Vec::with_capacity(BYTES_CABECALHO);
+    std::fs::File::open(caminho)
+        .ok()?
+        .take(BYTES_CABECALHO as u64)
+        .read_to_end(&mut inicio)
+        .ok()?;
+    vm::formato_do_cabecalho(&inicio)
+}
+
+/// Prompt de retomada e passos por agente estacionado (CC:236-249); o `start_command` lê a config, por isso roda
+/// no executor de fundo. Não abre pacote nem pede senha.
+pub fn retomada(
+    env: &Env,
+    cwd: &Path,
+    work: &WorkEnv,
+    pasta: &Path,
+    nome: &str,
+) -> Result<Retomada, String> {
+    let arquivo = arquivo_do_plano(pasta, nome)?;
+    let texto = read_text(&arquivo).unwrap_or_default();
+    let estacionados: Vec<_> = plan_agents(work, &texto)
+        .into_iter()
+        .filter(|a| a.readiness == Readiness::Parked)
+        .collect();
+    let registros = linked_agents(work, &texto);
+    let agentes: Vec<RetomadaAgente> = estacionados
+        .iter()
+        .map(|a| {
+            let papel = registros
+                .iter()
+                .find(|r| r.name == a.name)
+                .and_then(|r| r.record.get("role").and_then(|v| v.as_str()))
+                .unwrap_or("impl");
+            RetomadaAgente {
+                workspace: vm::comando_workspace(&a.worktree, &a.name),
+                iniciar: start_command(env, cwd, &a.name, "", papel),
+                adotar: vm::comando_adopt(&a.name),
+                nome: a.name.clone(),
+            }
+        })
+        .collect();
+    let nomes: Vec<String> = estacionados.into_iter().map(|a| a.name).collect();
+    Ok(Retomada {
+        prompt: resume_prompt(&arquivo.to_string_lossy(), &nomes),
+        agentes,
+    })
 }
 
 pub fn agora_ms() -> u64 {
@@ -340,5 +428,34 @@ mod tests {
     fn ultima_linha_ignora_vazias() {
         assert_eq!(ultima_linha("a\nb\n\n"), Some("b".to_owned()));
         assert_eq!(ultima_linha("  \n"), None);
+    }
+
+    #[test]
+    fn pacotes_listam_so_caronte_com_formato_do_cabecalho() {
+        let base = tempfile::tempdir().unwrap();
+        let mut valido = caronte_core::format::MAGIC.to_vec();
+        let json = br#"{"v":1}"#;
+        valido.extend_from_slice(&(json.len() as u32).to_be_bytes());
+        valido.extend_from_slice(json);
+        valido.extend_from_slice(&[7u8; 64]);
+        fs::write(base.path().join("a.caronte"), &valido).unwrap();
+        fs::write(base.path().join("b.caronte"), b"lixo").unwrap();
+        fs::write(base.path().join("c.txt"), &valido).unwrap();
+        fs::create_dir(base.path().join("d.caronte")).unwrap();
+        let lista = listar_pacotes(base.path());
+        let mut nomes: Vec<_> = lista.iter().map(|p| p.nome.as_str()).collect();
+        nomes.sort_unstable();
+        assert_eq!(nomes, ["a.caronte", "b.caronte"]);
+        let a = lista.iter().find(|p| p.nome == "a.caronte").unwrap();
+        assert_eq!((a.formato, a.tamanho), (Some(1), valido.len() as u64));
+        assert_eq!(
+            lista
+                .iter()
+                .find(|p| p.nome == "b.caronte")
+                .unwrap()
+                .formato,
+            None
+        );
+        assert!(listar_pacotes(&base.path().join("nada")).is_empty());
     }
 }
