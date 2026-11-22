@@ -1,0 +1,296 @@
+# Matriz de paridade do Caronte: `hades caronte ...` (TS, Hades-Skill) contra o binário `caronte`.
+# O argv é o do binário; o lado TS ganha o subcomando `caronte` por `ts_cmd`.
+# Fixture `orq`: plano demo, agente fake-a e a worktree montada pelos `setup-orq*.sh` (segredo montado no setup).
+# Pacote gravado não se compara em bytes (sal, IV e gzip diferem): `pack.grava` compara saída e código; modo 600 e
+# conteúdo ficam nos testes do Rust. O tty da senha fica fora da matriz (PR 8).
+
+[[case]]
+id = "uso.sem-sub"
+argv = []
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "uso.help"
+argv = ["-h"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "uso.help-longo"
+argv = ["--help"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "uso.desconhecido"
+argv = ["x"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.args.sem-plano"
+argv = ["pack"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.args.out-sem-valor"
+argv = ["pack", "demo", "--out"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.args.allow-sem-valor"
+argv = ["pack", "demo", "--allow"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.args.opcao"
+argv = ["pack", "demo", "--x"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.args.dois-planos"
+argv = ["pack", "demo", "outro"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.plano-inexistente"
+argv = ["pack", "nada"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.log2n-invalido.13"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "13", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:out/**"]
+
+[[case]]
+id = "pack.log2n-invalido.21"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "21", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:out/**"]
+
+[[case]]
+id = "pack.trabalhando"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-trabalhando.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:out/**"]
+
+[[case]]
+id = "pack.fora-do-plano"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-fora-do-plano.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.encerrado"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-encerrado.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.handoff-parked"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-handoff-parked.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run-com-journal"
+argv = ["pack", "demo", "--dry-run", "--with-journal"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run-barrado"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-segredo-nome.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run-segredo-commit"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-segredo-commit.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run-segredo-handoff"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-segredo-handoff.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.dry-run-allow"
+argv = ["pack", "demo", "--dry-run", "--allow", "worktrees/fake-a/.env", "--allow", "worktrees/fake-a/docs/credenciais.md"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-segredo-nome.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.barrado"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-segredo-nome.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit", "files:out/**"]
+
+[[case]]
+id = "pack.out-no-repo"
+argv = ["pack", "demo", "--out", "trees/fake-a/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.out-existe"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-out-existe.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "pack.sem-senha"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "" }
+compare = ["stdout", "exit", "files:out/**"]
+
+[[case]]
+id = "pack.grava"
+argv = ["pack", "demo", "--out", "out/p.caronte"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stderr", "exit"]
+
+[[case]]
+id = "pack.saida-padrao"
+argv = ["pack", "demo"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stderr", "exit"]
+
+[[case]]
+id = "pack.worktree-limpa"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-limpa.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.worktree-commits"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-commits.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.worktree-dirty"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-dirty.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "pack.relatorios-ignorados"
+argv = ["pack", "demo", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-ignorados.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "brief.lista"
+argv = ["brief", "demo"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "orq"
+setup = "setup-orq-brief.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit"]
+
+[[case]]
+id = "brief.sem-plano"
+argv = ["brief"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
+
+[[case]]
+id = "brief.plano-inexistente"
+argv = ["brief", "nada"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit"]
