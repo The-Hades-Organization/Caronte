@@ -5,13 +5,13 @@ use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
+use crate::password::ask_password;
 use caronte_core::format::encrypt_package;
 use caronte_core::gitx::SystemGit;
 use caronte_core::guard::{Finding, Rule, apply_allow};
 use caronte_core::manifest::{ManifestInput, PlanRef, Scope, build_manifest, manifest_part};
 use caronte_core::pack::{
-    caronte_failure, inside_repo, log2n_of, output_path, password_from_env, plan_stem, repo_of,
-    resolve_plan, work_of,
+    caronte_failure, inside_repo, log2n_of, output_path, plan_stem, repo_of, resolve_plan, work_of,
 };
 use caronte_core::plan::{GatherOptions, gather};
 use hades_core::Env;
@@ -204,7 +204,7 @@ pub fn run(args: &[String], env: &Env, cwd: &Path, stdin_is_tty: bool) -> Result
             None,
         );
     }
-    let password = password_from_env(env, stdin_is_tty)?;
+    let password = ask_password(env, stdin_is_tty, true)?;
     let log2n = log2n_of(env, cwd)?;
     let mut parts = vec![manifest_part(&manifest)];
     parts.extend(gathered.plan.parts.iter().cloned());

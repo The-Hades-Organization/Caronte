@@ -140,7 +140,7 @@ pub fn inside_repo(file: &Path) -> bool {
 }
 
 /// CC:91-99 (`askPassword`, só a parte do ambiente): `HADES_CARONTE_PASSWORD`; sem ela e sem tty não há pacote. A
-/// leitura pelo tty entra com a PR 8.
+/// leitura pelo tty mora no `caronte-cli` (`password::ask_password`), que só chega aqui sem tty ou com a variável.
 pub fn password_from_env(env: &Env, stdin_is_tty: bool) -> Result<String, HadesError> {
     if let Some(password) = env.get(PASSWORD_ENV) {
         return Ok(password.to_owned());
@@ -153,7 +153,7 @@ pub fn password_from_env(env: &Env, stdin_is_tty: bool) -> Result<String, HadesE
         );
     }
     die(
-        format!("leitura da senha pelo tty ainda não disponível neste binário: use {PASSWORD_ENV}"),
+        format!("a leitura da senha pelo tty é do caronte-cli: use {PASSWORD_ENV}"),
         exit::USAGE,
         None,
     )

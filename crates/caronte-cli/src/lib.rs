@@ -2,6 +2,7 @@
 
 mod brief;
 mod pack;
+mod password;
 mod unpack;
 
 use std::path::Path;

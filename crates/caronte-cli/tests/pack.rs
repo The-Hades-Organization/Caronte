@@ -181,3 +181,80 @@ fn sem_subcomando_e_uso() {
     assert_eq!(code(&out), 2);
     assert!(text(&out.stdout).starts_with("uso: hades caronte pack"));
 }
+
+fn caronte_no_tty(home: &Path, args: &[&str], typed: &str) -> Output {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let line = std::iter::once(env!("CARGO_BIN_EXE_caronte"))
+        .chain(args.iter().copied())
+        .map(|a| format!("'{a}'"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut child = Command::new("timeout")
+        .args(["30", "script", "-qec", &line, "/dev/null"])
+        .current_dir(home)
+        .env_clear()
+        .env("HOME", home)
+        .env("PATH", std::env::var("PATH").unwrap())
+        .env("TERM", "xterm")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("HADES_WORK_ROOT", home.join("work"))
+        .env("HADES_NOW", "2026-11-20T12:00:00Z")
+        .env("HADES_CARONTE_SCRYPT_LOG2N", "14")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    for chunk in typed.split_inclusive('\n') {
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        stdin.write_all(chunk.as_bytes()).unwrap();
+        stdin.flush().unwrap();
+    }
+    drop(stdin);
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn pack_le_a_senha_do_tty_sem_eco() {
+    let dir = home_with("setup-orq.sh");
+    let home = dir.path().join("home");
+    let file = home.join("out/tty.caronte");
+    let out = caronte_no_tty(
+        &home,
+        &["pack", "demo", "--out", file.to_str().unwrap()],
+        "segredo-tty\nsegredo-tty\n",
+    );
+    let stdout = text(&out.stdout);
+    assert!(stdout.contains("Senha do pacote"), "{stdout}");
+    assert!(stdout.contains("Repita a senha"), "{stdout}");
+    assert!(!stdout.contains("segredo-tty"), "eco da senha: {stdout}");
+    assert!(stdout.contains("pacote gravado:"), "{stdout}");
+    let opened = caronte(
+        &home,
+        &["unpack", file.to_str().unwrap(), "--dry-run"],
+        Some("segredo-tty"),
+    );
+    assert!(
+        text(&opened.stderr).contains("não há clone"),
+        "a senha digitada não abriu o pacote: {}",
+        text(&opened.stderr)
+    );
+}
+
+#[test]
+fn pack_recusa_senhas_que_nao_conferem_no_tty() {
+    let dir = home_with("setup-orq.sh");
+    let home = dir.path().join("home");
+    let file = home.join("out/tty2.caronte");
+    let out = caronte_no_tty(
+        &home,
+        &["pack", "demo", "--out", file.to_str().unwrap()],
+        "um\ndois\n",
+    );
+    assert_eq!(code(&out), 2, "{}", text(&out.stdout));
+    assert!(text(&out.stdout).contains("as senhas não conferem"));
+    assert!(!file.exists());
+}

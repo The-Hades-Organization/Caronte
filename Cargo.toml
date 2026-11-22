@@ -20,6 +20,7 @@ flate2 = "1"
 base64 = "0.22"
 unicode-normalization = "0.1"
 getrandom = "0.2"
+crossterm = "0.29"
 tempfile = "3"
 regex = "1"
 clap = { version = "4", features = ["derive"] }

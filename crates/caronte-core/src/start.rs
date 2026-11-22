@@ -6,6 +6,11 @@ use std::path::Path;
 
 use hades_core::Env;
 use hades_core::config::config_value;
+use hades_core::proc::{RunOptions, run, which};
+use serde_json::Value;
+
+/// Binário do Hades; ausente, procura `hades` no PATH.
+pub const HADES_BIN_ENV: &str = "CARONTE_HADES_BIN";
 
 const PROVIDER_KEY: &str = "HADES_AGENT_PROVIDER";
 const AGY_DEFAULT_OPUS_MODEL: &str = "gemini-4-argon";
@@ -126,6 +131,93 @@ pub fn start_command(env: &Env, cwd: &Path, name: &str, pane: &str, role: &str) 
     )
 }
 
+/// Saída de `hades provider start-argv`: `{"kind","args"}` (`startArgv`, `src/lib/agent-registry.ts`).
+#[derive(Debug, PartialEq, Eq)]
+pub struct StartArgv {
+    pub kind: String,
+    pub args: Vec<String>,
+}
+
+pub fn parse_start_argv(stdout: &str) -> Result<StartArgv, String> {
+    let value: Value =
+        serde_json::from_str(stdout.trim()).map_err(|e| format!("JSON inválido: {e}"))?;
+    let kind = value
+        .get("kind")
+        .and_then(Value::as_str)
+        .filter(|k| !k.is_empty())
+        .ok_or("faltou \"kind\"")?
+        .to_owned();
+    let args = value
+        .get("args")
+        .and_then(Value::as_array)
+        .ok_or("faltou \"args\"")?
+        .iter()
+        .map(|a| {
+            a.as_str()
+                .map(str::to_owned)
+                .ok_or("\"args\" só aceita texto")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(StartArgv { kind, args })
+}
+
+/// Quem informa o argv de start do papel; `None` manda o chamador para o `start_command` local.
+pub trait StartArgvSource {
+    fn start_argv(&self, role: &str) -> Option<StartArgv>;
+}
+
+/// Pede o argv ao `hades provider start-argv --role R`; sem `hades` ou com erro, não informa nada.
+pub struct HadesStartArgv {
+    hades: Option<String>,
+}
+
+impl HadesStartArgv {
+    pub fn new(env: &Env) -> Self {
+        let hades = match env.get(HADES_BIN_ENV).filter(|v| !v.is_empty()) {
+            Some(path) => Some(path.to_owned()),
+            None => which("hades", env.get("PATH").unwrap_or(""))
+                .map(|p| p.to_string_lossy().into_owned()),
+        };
+        Self { hades }
+    }
+}
+
+impl StartArgvSource for HadesStartArgv {
+    fn start_argv(&self, role: &str) -> Option<StartArgv> {
+        let hades = self.hades.as_deref()?;
+        let result = run(
+            hades,
+            &["provider", "start-argv", "--role", role],
+            &RunOptions::default(),
+        );
+        if result.status != 0 {
+            return None;
+        }
+        parse_start_argv(&result.stdout).ok()
+    }
+}
+
+/// AR:66-72 (`startCommand`) com o argv vindo do Hades (`startArgv`); sem ele, a porta local.
+pub fn start_command_via(
+    source: &dyn StartArgvSource,
+    env: &Env,
+    cwd: &Path,
+    name: &str,
+    pane: &str,
+    role: &str,
+) -> String {
+    match source.start_argv(role) {
+        Some(StartArgv { kind, args }) => {
+            let pane = if pane.is_empty() { "<pane>" } else { pane };
+            format!(
+                "! herdr agent start {name} --kind {kind} --pane {pane} -- {}",
+                args.join(" ")
+            )
+        }
+        None => start_command(env, cwd, name, pane, role),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,5 +275,65 @@ mod tests {
             start_command(&env, Path::new("/"), "n", "", "impl")
                 .ends_with("--mode auto --dangerously-skip-permissions")
         );
+    }
+
+    struct Fixed(Option<StartArgv>);
+
+    impl StartArgvSource for Fixed {
+        fn start_argv(&self, _role: &str) -> Option<StartArgv> {
+            self.0.as_ref().map(|a| StartArgv {
+                kind: a.kind.clone(),
+                args: a.args.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn le_o_json_do_hades() {
+        let parsed =
+            parse_start_argv("{\"kind\":\"claude\",\"args\":[\"--permission-mode\",\"auto\"]}\n")
+                .unwrap();
+        assert_eq!(parsed.kind, "claude");
+        assert_eq!(parsed.args, ["--permission-mode", "auto"]);
+    }
+
+    #[test]
+    fn recusa_saida_incompleta_ou_torta() {
+        for bad in [
+            "",
+            "nope",
+            "{}",
+            "{\"kind\":\"\",\"args\":[]}",
+            "{\"kind\":\"c\"}",
+            "{\"kind\":\"c\",\"args\":[1]}",
+        ] {
+            assert!(parse_start_argv(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn linha_usa_o_argv_do_hades() {
+        let source = Fixed(Some(StartArgv {
+            kind: "agy".into(),
+            args: vec!["--mode".into(), "auto".into()],
+        }));
+        assert_eq!(
+            start_command_via(&source, &env(), Path::new("/"), "n", "p2", "impl"),
+            "! herdr agent start n --kind agy --pane p2 -- --mode auto"
+        );
+    }
+
+    #[test]
+    fn sem_argv_do_hades_cai_no_start_command_local() {
+        assert_eq!(
+            start_command_via(&Fixed(None), &env(), Path::new("/"), "fake-a", "", "impl"),
+            start_command(&env(), Path::new("/"), "fake-a", "", "impl")
+        );
+    }
+
+    #[test]
+    fn sem_hades_no_path_nao_informa_argv() {
+        let env = Env::empty().with("PATH", "/nao-existe");
+        assert!(HadesStartArgv::new(&env).start_argv("impl").is_none());
     }
 }

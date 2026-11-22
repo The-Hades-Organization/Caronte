@@ -6,14 +6,16 @@ use std::path::Path;
 use caronte_core::format::decrypt_package;
 use caronte_core::gitx::SystemGit;
 use caronte_core::manifest::verify_parts;
-use caronte_core::pack::{caronte_failure, password_from_env};
+use caronte_core::pack::caronte_failure;
 use caronte_core::plan::resume_prompt;
-use caronte_core::start::start_command;
+use caronte_core::start::{HadesStartArgv, start_command_via};
 use caronte_core::unpack::{Prepared, UnpackOptions, apply, prepare};
 use hades_core::Env;
 use hades_core::fsx::{is_file, read_text, resolve};
 use hades_core::output::{HadesError, die, exit, out, warn};
 use hades_core::paths::skill_root;
+
+use crate::password::ask_password;
 
 const DEFAULT_REPORTS: &str = ".design-sync-reports";
 
@@ -101,6 +103,7 @@ fn resume_lines(prepared: &Prepared, env: &Env, cwd: &Path) {
         .collect();
     out("");
     out("para retomar, por agente (o dono inicia cada um):");
+    let hades = HadesStartArgv::new(env);
     for agent in &resumable {
         out(&format!("  {}:", agent.name));
         out(&format!(
@@ -109,7 +112,7 @@ fn resume_lines(prepared: &Prepared, env: &Env, cwd: &Path) {
         ));
         out(&format!(
             "    {}",
-            start_command(env, cwd, &agent.name, "", &agent.role)
+            start_command_via(&hades, env, cwd, &agent.name, "", &agent.role)
         ));
         out(&format!(
             "    hades agent adopt {0} && hades agent resume {0}",
@@ -135,7 +138,7 @@ pub fn run(args: &[String], env: &Env, cwd: &Path, stdin_is_tty: bool) -> Result
             None,
         );
     }
-    let password = password_from_env(env, stdin_is_tty)?;
+    let password = ask_password(env, stdin_is_tty, false)?;
     let bytes = fs::read(&file)
         .map_err(|e| HadesError::with_code(format!("{}: {e}", file.display()), exit::FAIL))?;
     let parts = decrypt_package(&bytes, &password).map_err(|e| caronte_failure(&e))?;
