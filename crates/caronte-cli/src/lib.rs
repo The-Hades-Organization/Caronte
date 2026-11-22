@@ -1,7 +1,8 @@
-//! Despacho e impressão do `caronte` (CC:289-299). `unpack` entra na PR 7.
+//! Despacho e impressão do `caronte` (CC:289-299).
 
 mod brief;
 mod pack;
+mod unpack;
 
 use std::path::Path;
 
@@ -25,11 +26,7 @@ pub fn run(args: &[String], env: &Env, cwd: &Path, stdin_is_tty: bool) -> Result
     match args.first().map(String::as_str) {
         Some("pack") => pack::run(rest, env, cwd, stdin_is_tty),
         Some("brief") => brief::run(rest, env, cwd),
-        Some("unpack") => die(
-            "unpack ainda não está disponível no caronte em Rust; use o Hades (hades caronte unpack)",
-            exit::USAGE,
-            None,
-        ),
+        Some("unpack") => unpack::run(rest, env, cwd, stdin_is_tty),
         sub => {
             out(USAGE);
             match sub {
