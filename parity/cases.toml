@@ -294,3 +294,151 @@ argv = ["brief", "nada"]
 ts_cmd = ["{skill}/src/cli.ts", "caronte"]
 env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_CARONTE_PASSWORD = "senha de teste 123" }
 compare = ["stdout", "exit"]
+
+# unpack: HADES_MODEL_IMPL/HADES_EFFORT_IMPL fixos: o runner exporta HADES_DATA e o core Rust (regra de instância unificada) deixa de ler o kit do TS.
+# unpack: destinos relativos ao HOME (o runner não troca @HOME@ no argv). Pacotes fixos de gen-pacotes.sh.
+# Recusas não comparam stderr (lacuna transversal do catálogo human-errors); o sucesso compara.
+
+[[case]]
+id = "unpack.ts-pacote"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.rust-pacote"
+argv = ["unpack", "pacotes/rust.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.dry-run"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.dry-run-rust"
+argv = ["unpack", "pacotes/rust.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone", "--dry-run"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "stderr", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.senha-errada"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha errada 456" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.plano-diferente"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-plano-diferente.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.worktree-existe"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-worktree-existe.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.branch-existe"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-branch-existe.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.registro-existe"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-registro-existe.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.sem-clone"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-sem-clone.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.base-fora"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-base-fora.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.recusa.clone-nao-repo"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-clone-nao-repo.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.truncado"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-truncado.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.nao-pacote"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-nao-pacote.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.log2n"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-log2n.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "unpack.header"
+argv = ["unpack", "pacotes/ts.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+fixture = "unpack"
+setup = "setup-unpack-header.sh"
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
