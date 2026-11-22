@@ -818,7 +818,10 @@ dependencies = [
  "gpui-component",
  "gpui-pre",
  "gpui-pre-platform",
+ "hades-core",
  "hades-ui",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 caronte-core = { path = "../caronte-core" }
+hades-core.workspace = true
 hades-ui.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
@@ -22,3 +23,7 @@ gpui-component.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
