@@ -34,10 +34,19 @@ pub enum Tela {
     Previa,
     Pacotes,
     Retomar,
+    Config,
 }
 
 impl Tela {
-    pub const TODAS: [Tela; 4] = [Tela::Planos, Tela::Previa, Tela::Pacotes, Tela::Retomar];
+    pub const TODAS: [Tela; 5] = [
+        Tela::Planos,
+        Tela::Previa,
+        Tela::Pacotes,
+        Tela::Retomar,
+        Tela::Config,
+    ];
+    /// Telas com atalho numérico; Configurações fica de fora porque tem campos de texto.
+    pub const COM_ATALHO: [Tela; 4] = [Tela::Planos, Tela::Previa, Tela::Pacotes, Tela::Retomar];
 
     pub fn rotulo(self) -> &'static str {
         match self {
@@ -45,6 +54,7 @@ impl Tela {
             Tela::Previa => "Prévia do pack",
             Tela::Pacotes => "Pacotes",
             Tela::Retomar => "Retomar",
+            Tela::Config => "Configurações",
         }
     }
 
@@ -54,6 +64,7 @@ impl Tela {
             "previa" => Some(Tela::Previa),
             "pacotes" => Some(Tela::Pacotes),
             "retomar" => Some(Tela::Retomar),
+            "configuracoes" => Some(Tela::Config),
             _ => None,
         }
     }
@@ -66,7 +77,24 @@ impl Tela {
 /// Atalho: teclas 1 a 4 trocam de tela, como o clique no `Rail`.
 pub fn tela_da_tecla(tecla: &str) -> Option<Tela> {
     let n: usize = tecla.parse().ok()?;
-    Tela::TODAS.get(n.checked_sub(1)?).copied()
+    Tela::COM_ATALHO.get(n.checked_sub(1)?).copied()
+}
+
+/// `1 plano`, `3 planos`.
+pub fn planos(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "plano" } else { "planos" })
+}
+
+/// `1 configuração`, `2 configurações`.
+pub fn configuracoes(n: usize) -> String {
+    format!(
+        "{n} {}",
+        if n == 1 {
+            "configuração"
+        } else {
+            "configurações"
+        }
+    )
 }
 
 /// PC:40 (`PLAN_NAME`): `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`.

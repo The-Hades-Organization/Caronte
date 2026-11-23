@@ -2,22 +2,26 @@
 //! onde a senha passa pelo tty: o app mostra o comando pronto e nunca pede senha.
 
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Render, SharedString, Styled, Window, div, px,
 };
+use gpui_component::input::{InputEvent, InputState};
 use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
     Align, Button, ButtonKind, Card, DataTable, EmptyState, Page, PageHeader, Rail, RailBrand,
-    RailGroup, RailItem, RailStat, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock,
+    RailGroup, RailItem, RailStat, SettingOrigin, SettingRow, SettingsBar, SettingsGroup, Skeleton,
+    Spinner, StatusBadge, StatusBar, TermBlock,
 };
 use hades_ui::icons::IconName;
 use hades_ui::palette;
 use hades_ui::tokens::space;
 
+use crate::config::{self, ConfigLocal, FonteDeConfig, Linha, Origem};
 use crate::service;
 use crate::vm::{
     self, COLUNAS_ACHADOS, COLUNAS_AGENTES, COLUNAS_PACOTES, COLUNAS_PARTES, COLUNAS_PLANOS,
@@ -28,8 +32,18 @@ use crate::vm::{
 const PERIODO_MS: u64 = 500;
 const TIQUES_PLANOS: u32 = 10;
 
+/// Linhas da página Configurações e um campo de texto por linha.
+struct CfgEstado {
+    linhas: Vec<Linha>,
+    entradas: Vec<Entity<InputState>>,
+    erro: Option<String>,
+}
+
 pub struct CaronteView {
     env: Env,
+    fonte: Rc<dyn FonteDeConfig>,
+    cfg: Option<CfgEstado>,
+    cfg_salvo: bool,
     cwd: PathBuf,
     work: Option<WorkEnv>,
     hades: bool,
@@ -59,6 +73,9 @@ impl CaronteView {
         let mut view = Self {
             hades: service::hades_no_path(&env),
             work: None,
+            fonte: Rc::new(ConfigLocal::new(&env, &cwd)),
+            cfg: None,
+            cfg_salvo: false,
             tela: Tela::Planos,
             planos: Vec::new(),
             plano: None,
@@ -286,7 +303,7 @@ impl CaronteView {
             Tela::Previa => self.carregar_previa(cx),
             Tela::Pacotes => self.carregar_pacotes(cx),
             Tela::Retomar => self.carregar_retomada(cx),
-            Tela::Planos => {}
+            Tela::Planos | Tela::Config => {}
         }
     }
 
@@ -357,7 +374,7 @@ impl CaronteView {
             if ocupado {
                 "calculando…".to_owned()
             } else {
-                format!("{} planos", self.planos.len())
+                vm::planos(self.planos.len())
             }
         });
         (esquerda, format!("caronte {}", env!("CARGO_PKG_VERSION")))
@@ -378,6 +395,147 @@ impl CaronteView {
         RailStat::new("Planos prontos", format!("{prontos} de {total}")).fraction(fracao)
     }
 
+    /// Cria os campos da página na primeira vez que ela aparece (e depois de salvar ou descartar).
+    fn garantir_config(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.cfg.is_some() {
+            return;
+        }
+        let (linhas, erro) = match self.fonte.carregar() {
+            Ok(l) => (l, None),
+            Err(e) => (Vec::new(), Some(e)),
+        };
+        let mut entradas = Vec::new();
+        for l in &linhas {
+            let valor = l.valor.clone();
+            let dica = l.dica_do_vazio();
+            let entrada = cx.new(|cx| {
+                let estado = InputState::new(window, cx).default_value(valor);
+                match dica {
+                    Some(d) => estado.placeholder(d),
+                    None => estado,
+                }
+            });
+            cx.subscribe(&entrada, |v: &mut Self, _, e: &InputEvent, cx| {
+                if matches!(e, InputEvent::Change) {
+                    v.cfg_salvo = false;
+                    cx.notify();
+                }
+            })
+            .detach();
+            entradas.push(entrada);
+        }
+        self.cfg = Some(CfgEstado {
+            linhas,
+            entradas,
+            erro,
+        });
+    }
+
+    fn textos_config(&self, cx: &App) -> Vec<String> {
+        self.cfg.as_ref().map_or_else(Vec::new, |c| {
+            c.entradas
+                .iter()
+                .map(|e| e.read(cx).value().to_string())
+                .collect()
+        })
+    }
+
+    fn salvar_config(&mut self, cx: &mut Context<Self>) {
+        let textos = self.textos_config(cx);
+        let Some(c) = &self.cfg else { return };
+        match config::salvar(self.fonte.as_ref(), &c.linhas, &textos) {
+            Ok(n) => {
+                self.aviso = Some(format!("Configurações gravadas ({n})"));
+                self.cfg = None;
+                self.cfg_salvo = true;
+            }
+            Err(e) => self.aviso = Some(e),
+        }
+        cx.notify();
+    }
+
+    fn descartar_config(&mut self, cx: &mut Context<Self>) {
+        self.cfg = None;
+        self.cfg_salvo = false;
+        cx.notify();
+    }
+
+    fn tela_config(&self, cx: &mut Context<Self>) -> Page {
+        let cabecalho = PageHeader::new("Configurações")
+            .subtitle("Chaves HADES_CARONTE_* do catálogo do Hades")
+            .description("Mesmos nomes, padrões, faixas e precedência do CLI: ambiente, depois o config.env, depois o padrão.");
+        let pagina = Page::new("pagina-config").header(cabecalho);
+        let Some(c) = &self.cfg else {
+            return pagina;
+        };
+        if let Some(erro) = &c.erro {
+            return pagina.child(
+                EmptyState::new("Catálogo indisponível")
+                    .hint(erro.clone())
+                    .fill(),
+            );
+        }
+        let textos = self.textos_config(cx);
+        let erros = config::erros(&c.linhas, &textos);
+        let pendentes = config::pendentes(&c.linhas, &textos);
+        let entidade = cx.entity();
+        let mut grupos: Vec<(String, Vec<usize>)> = Vec::new();
+        for (i, l) in c.linhas.iter().enumerate() {
+            match grupos.iter_mut().find(|(g, _)| *g == l.grupo) {
+                Some((_, idx)) => idx.push(i),
+                None => grupos.push((l.grupo.clone(), vec![i])),
+            }
+        }
+        let mut pagina = pagina;
+        if !self.fonte.gravavel() {
+            pagina = pagina.child(Card::new().note(
+                "Sem instalação do Hades: a página mostra os padrões do kit e não grava nada.",
+            ));
+        }
+        for (nome, indices) in grupos {
+            let fora = indices
+                .iter()
+                .filter(|&&i| textos[i].trim() != c.linhas[i].padrao)
+                .count();
+            let mut grupo = SettingsGroup::new(nome).meta(format!(
+                "{} · {fora} fora do padrão",
+                vm::configuracoes(indices.len())
+            ));
+            for i in indices {
+                let l = &c.linhas[i];
+                let id = SharedString::from(format!("cfg-{}", l.chave));
+                let entrada = &c.entradas[i];
+                let mut linha = match l.faixa() {
+                    Some((min, max)) => SettingRow::number(id, l.rotulo.clone(), entrada, min, max),
+                    None => SettingRow::text(id, l.rotulo.clone(), entrada),
+                }
+                .key(l.chave.clone())
+                .description(l.descricao_completa())
+                .default_value(l.padrao.clone())
+                .origin(match l.origem {
+                    Origem::Padrao => SettingOrigin::Default,
+                    Origem::Arquivo => SettingOrigin::File,
+                    Origem::Ambiente => SettingOrigin::Env,
+                })
+                .modified(textos[i].trim() != l.padrao)
+                .error_opt(erros[i].clone());
+                let (entrada, padrao) = (entrada.clone(), l.padrao.clone());
+                linha = linha.on_reset(move |_, window, cx| {
+                    entrada.update(cx, |s, cx| s.set_value(padrao.clone(), window, cx));
+                });
+                grupo = grupo.row(linha);
+            }
+            pagina = pagina.child(grupo);
+        }
+        let (e_salvar, e_descartar) = (entidade.clone(), entidade);
+        pagina.child(
+            SettingsBar::new(pendentes)
+                .saved(self.cfg_salvo)
+                .on_save(move |_, _, cx| e_salvar.update(cx, |v, cx| v.salvar_config(cx)))
+                .on_discard(move |_, _, cx| e_descartar.update(cx, |v, cx| v.descartar_config(cx))),
+        )
+    }
+
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
         let entidade = cx.entity();
         let item_da_tela = |t: Tela| {
@@ -386,6 +544,7 @@ impl CaronteView {
                 Tela::Previa => IconName::Eye,
                 Tela::Pacotes => IconName::Package,
                 Tela::Retomar => IconName::RotateCcw,
+                Tela::Config => IconName::SlidersHorizontal,
             });
             match t {
                 Tela::Planos => item.badge(self.planos.len().to_string()),
@@ -397,9 +556,11 @@ impl CaronteView {
         };
         let preparo = [Tela::Planos, Tela::Previa].map(item_da_tela);
         let pacote = [Tela::Pacotes, Tela::Retomar].map(item_da_tela);
+        let ajustes = RailGroup::new("Ajustes", [item_da_tela(Tela::Config)]);
         Rail::new([
             RailGroup::new("Preparo", preparo),
             RailGroup::new("Pacote", pacote),
+            ajustes,
         ])
         .brand(RailBrand::new("Caronte").subtitle("planos e pacotes"))
         .stat(self.estado_rail())
@@ -890,7 +1051,10 @@ fn colunas(nomes: &[&str]) -> Vec<(SharedString, Align)> {
 }
 
 impl Render for CaronteView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.tela == Tela::Config {
+            self.garantir_config(window, cx);
+        }
         let p = palette(cx);
         let (esquerda, versao) = self.rodape();
         let rail = self.rail(cx);
@@ -899,11 +1063,15 @@ impl Render for CaronteView {
             Tela::Previa => self.tela_previa(cx),
             Tela::Pacotes => self.tela_pacotes(cx),
             Tela::Retomar => self.tela_retomar(),
+            Tela::Config => self.tela_config(cx).into_any_element(),
         };
         div()
             .id("caronte")
             .track_focus(&self.foco)
             .on_key_down(cx.listener(|v, ev: &KeyDownEvent, _, cx| {
+                if v.tela == Tela::Config {
+                    return;
+                }
                 if let Some(t) = vm::tela_da_tecla(&ev.keystroke.key) {
                     v.mudar_tela(t, cx);
                     cx.notify();

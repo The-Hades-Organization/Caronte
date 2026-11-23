@@ -361,3 +361,15 @@ fn comandos_de_retomada_e_unpack() {
         "hades agent adopt x && hades agent resume x"
     );
 }
+
+#[test]
+fn plurais_e_tela_de_configuracoes() {
+    assert_eq!(planos(0), "0 planos");
+    assert_eq!(planos(1), "1 plano");
+    assert_eq!(planos(3), "3 planos");
+    assert_eq!(configuracoes(1), "1 configuração");
+    assert_eq!(configuracoes(2), "2 configurações");
+    assert_eq!(Tela::de_flag("configuracoes"), Some(Tela::Config));
+    assert_eq!(Tela::de_rotulo("Configurações"), Some(Tela::Config));
+    assert_eq!(tela_da_tecla("5"), None);
+}
