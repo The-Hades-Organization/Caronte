@@ -48,6 +48,16 @@ impl Tela {
         }
     }
 
+    pub fn de_flag(nome: &str) -> Option<Tela> {
+        match nome {
+            "planos" => Some(Tela::Planos),
+            "previa" => Some(Tela::Previa),
+            "pacotes" => Some(Tela::Pacotes),
+            "retomar" => Some(Tela::Retomar),
+            _ => None,
+        }
+    }
+
     pub fn de_rotulo(rotulo: &str) -> Option<Tela> {
         Tela::TODAS.into_iter().find(|t| t.rotulo() == rotulo)
     }

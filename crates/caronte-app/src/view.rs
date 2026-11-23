@@ -12,9 +12,10 @@ use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
     Align, Button, CopyButton, DataTable, EmptyState, PageHeader, Rail, RailGroup, RailItem,
-    StatusBadge, StatusBar, TermBlock, TopBar,
+    Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
 };
 use hades_ui::palette;
+use hades_ui::tokens::space;
 
 use crate::service;
 use crate::vm::{
@@ -349,7 +350,7 @@ impl CaronteView {
 
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
         let entidade = cx.entity();
-        let itens = Tela::TODAS.map(|t| {
+        let item_da_tela = |t: Tela| {
             let item = RailItem::new(t.rotulo());
             match t {
                 Tela::Planos => item.badge(self.planos.len().to_string()),
@@ -358,22 +359,27 @@ impl CaronteView {
                 }
                 _ => item,
             }
-        });
-        Rail::new([RailGroup::new("Caronte", itens)])
-            .selected(self.tela.rotulo())
-            .on_select(move |rotulo, _, cx| {
-                if let Some(t) = Tela::de_rotulo(rotulo) {
-                    entidade.update(cx, |v, cx| {
-                        v.mudar_tela(t, cx);
-                        cx.notify();
-                    });
-                }
-            })
+        };
+        let preparo = [Tela::Planos, Tela::Previa].map(item_da_tela);
+        let pacote = [Tela::Pacotes, Tela::Retomar].map(item_da_tela);
+        Rail::new([
+            RailGroup::new("Preparo", preparo),
+            RailGroup::new("Pacote", pacote),
+        ])
+        .selected(self.tela.rotulo())
+        .on_select(move |rotulo, _, cx| {
+            if let Some(t) = Tela::de_rotulo(rotulo) {
+                entidade.update(cx, |v, cx| {
+                    v.mudar_tela(t, cx);
+                    cx.notify();
+                });
+            }
+        })
     }
 
     fn tela_planos(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let entidade = cx.entity();
-        let mut coluna = div().flex().flex_col().gap(px(14.0));
+        let mut coluna = div().flex().flex_col().gap(px(space::LG));
         let agente_sel = self.plano_atual().and_then(|p| {
             let nome = self.agente.as_ref()?;
             p.agentes.iter().find(|a| &a.name == nome)
@@ -462,7 +468,7 @@ impl CaronteView {
         });
         coluna = coluna.child(agentes);
 
-        let mut selos = div().flex().gap(px(8.0));
+        let mut selos = div().flex().gap(px(space::SM));
         for a in &resumo.agentes {
             selos = selos.child(StatusBadge::new(
                 format!("{} · {}", a.name, vm::rotulo_prontidao(a.readiness)),
@@ -483,7 +489,7 @@ impl CaronteView {
     }
 
     fn tela_previa(&self) -> gpui::AnyElement {
-        let mut coluna = div().flex().flex_col().gap(px(14.0));
+        let mut coluna = div().flex().flex_col().gap(px(space::LG));
         let titulo = self
             .plano
             .clone()
@@ -504,10 +510,7 @@ impl CaronteView {
                 )
                 .into_any_element(),
             EstadoPrevia::Carregando => coluna
-                .child(
-                    EmptyState::new("Calculando a prévia…")
-                        .hint("Montar a prévia lê as worktrees e roda git; a janela segue livre."),
-                )
+                .child(carregando("previa", "Calculando a prévia"))
                 .into_any_element(),
             EstadoPrevia::NaoPronta(faltam) => {
                 let mut term = TermBlock::new().dim("# estacione antes de empacotar");
@@ -529,7 +532,7 @@ impl CaronteView {
                 coluna = coluna.child(
                     div()
                         .flex()
-                        .gap(px(8.0))
+                        .gap(px(space::SM))
                         .child(StatusBadge::new(
                             format!("guarda de segredo: {}", vm::rotulo_guarda(achados)),
                             vm::tom_guarda(achados),
@@ -583,7 +586,7 @@ impl CaronteView {
         let mut coluna = div()
             .flex()
             .flex_col()
-            .gap(px(14.0))
+            .gap(px(space::LG))
             .child(PageHeader::new("Pacotes"));
         if self.pacotes.is_empty() {
             let pasta = service::pasta_de_pacotes(&self.env, &self.cwd);
@@ -643,7 +646,7 @@ impl CaronteView {
         let coluna = div()
             .flex()
             .flex_col()
-            .gap(px(14.0))
+            .gap(px(space::LG))
             .child(PageHeader::new(titulo));
         match &self.retomada {
             EstadoRetomada::SemPlano => coluna
@@ -653,7 +656,7 @@ impl CaronteView {
                 )
                 .into_any_element(),
             EstadoRetomada::Carregando => coluna
-                .child(EmptyState::new("Montando a retomada…"))
+                .child(carregando("retomada", "Montando a retomada"))
                 .into_any_element(),
             EstadoRetomada::Falhou(motivo) => coluna
                 .child(EmptyState::new("A retomada falhou").hint(motivo.clone()))
@@ -685,6 +688,23 @@ impl CaronteView {
             }
         }
     }
+}
+
+fn carregando(id: &str, rotulo: &'static str) -> gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(space::MD))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::SM))
+                .child(Spinner::new(SharedString::from(format!("{id}-giro"))))
+                .child(StatusBadge::new(rotulo, hades_ui::Tone::Busy)),
+        )
+        .child(Skeleton::new(SharedString::from(format!("{id}-sk1"))))
+        .child(Skeleton::new(SharedString::from(format!("{id}-sk2"))))
 }
 
 fn colunas(nomes: &[&str]) -> Vec<(SharedString, Align)> {
@@ -731,21 +751,23 @@ impl Render for CaronteView {
                 div()
                     .flex_1()
                     .flex()
-                    .min_h(px(0.0))
+                    .min_h_0()
                     .child(rail)
-                    .child(div().flex_1().p(px(16.0)).child(corpo)),
+                    .child(div().flex_1().p(px(space::LG)).child(corpo)),
             )
             .child(StatusBar::new(esquerda, direita))
     }
 }
 
-pub fn abrir_janela(cx: &mut App) {
+pub fn abrir_janela(cx: &mut App, tela: Tela) {
     let aberta = cx.open_window(gpui::WindowOptions::default(), |window, cx| {
         window.set_window_title(crate::NOME);
         let cwd = std::env::current_dir().unwrap_or_default();
         let view: Entity<CaronteView> = cx.new(|cx| {
             CaronteView::iniciar(cx);
-            CaronteView::new(Env::from_process(), cwd, cx.focus_handle(), cx)
+            let mut v = CaronteView::new(Env::from_process(), cwd, cx.focus_handle(), cx);
+            v.mudar_tela(tela, cx);
+            v
         });
         view
     });
