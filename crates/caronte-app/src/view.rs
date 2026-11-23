@@ -11,9 +11,10 @@ use gpui::{
 use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
-    Align, Button, CopyButton, DataTable, EmptyState, IconName, PageHeader, Rail, RailBrand,
-    RailGroup, RailItem, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
+    Align, Button, CopyButton, DataTable, EmptyState, PageHeader, Rail, RailBrand, RailGroup,
+    RailItem, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
 };
+use hades_ui::icons::IconName;
 use hades_ui::palette;
 use hades_ui::tokens::space;
 
