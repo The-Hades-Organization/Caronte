@@ -11,8 +11,8 @@ use gpui::{
 use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
-    Align, Button, Card, DataTable, EmptyState, Page, PageHeader, Rail, RailBrand, RailGroup,
-    RailItem, RailStat, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock,
+    Align, Button, ButtonKind, Card, DataTable, EmptyState, Page, PageHeader, Rail, RailBrand,
+    RailGroup, RailItem, RailStat, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock,
 };
 use hades_ui::icons::IconName;
 use hades_ui::palette;
@@ -50,6 +50,8 @@ pub struct CaronteView {
     retomada: EstadoRetomada,
     t_retomada: Tarefa,
     estacionando: Estacionando,
+    recolhida: bool,
+    referencia_git: Option<String>,
 }
 
 impl CaronteView {
@@ -74,6 +76,8 @@ impl CaronteView {
             retomada: EstadoRetomada::SemPlano,
             t_retomada: Tarefa::default(),
             estacionando: Estacionando::default(),
+            recolhida: false,
+            referencia_git: service::referencia_git(&cwd),
             env,
             cwd,
         };
@@ -398,7 +402,18 @@ impl CaronteView {
             RailGroup::new("Pacote", pacote),
         ])
         .brand(RailBrand::new("Caronte").subtitle("planos e pacotes"))
-        .footer(self.estado_rail())
+        .stat(self.estado_rail())
+        .theme_toggle()
+        .collapsed(self.recolhida)
+        .on_collapse({
+            let entidade = entidade.clone();
+            move |recolhida, _, cx| {
+                entidade.update(cx, |v, cx| {
+                    v.recolhida = recolhida;
+                    cx.notify();
+                });
+            }
+        })
         .selected(self.tela.rotulo())
         .on_select(move |rotulo, _, cx| {
             if let Some(t) = Tela::de_rotulo(rotulo) {
@@ -436,9 +451,27 @@ impl CaronteView {
                 .icon(IconName::CirclePause)
                 .disabled("Selecione um agente"),
         };
-        let cabecalho = PageHeader::new("Planos")
+        let atualizar = {
+            let e = entidade.clone();
+            Button::new("atualizar-planos", "Atualizar")
+                .kind(ButtonKind::Ghost)
+                .icon(IconName::RotateCcw)
+                .on_click(move |_, _, cx| {
+                    e.update(cx, |v, cx| {
+                        v.recarregar_planos(cx);
+                        cx.notify();
+                    });
+                })
+        };
+        let mut cabecalho = PageHeader::new("Planos")
             .subtitle("Planos de orquestração e a prontidão dos agentes para o pack")
+            .action(atualizar)
             .action(estacionar);
+        if let Some(ref_git) = &self.referencia_git {
+            cabecalho = cabecalho
+                .meta(ref_git.clone())
+                .meta_icon(IconName::GitBranch);
+        }
         let pagina = Page::new("planos").header(cabecalho);
 
         if self.planos.is_empty() {
@@ -538,7 +571,8 @@ impl CaronteView {
         pagina.child(card).into_any_element()
     }
 
-    fn tela_previa(&self) -> gpui::AnyElement {
+    fn tela_previa(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let entidade = cx.entity();
         let titulo = self
             .plano
             .clone()
@@ -609,10 +643,26 @@ impl CaronteView {
                 for l in vm::linhas_partes(p) {
                     partes = partes.row(l.into_iter().map(SharedString::from));
                 }
+                let recalcular = {
+                    let e = entidade.clone();
+                    let plano = nome.clone();
+                    Button::new("recalcular-previa", "Recalcular")
+                        .kind(ButtonKind::Ghost)
+                        .icon(IconName::RotateCcw)
+                        .on_click(move |_, _, cx| {
+                            e.update(cx, |v, cx| {
+                                v.cache.esquecer(&plano);
+                                v.carregar_previa(cx);
+                                cx.notify();
+                            });
+                        })
+                };
                 pagina = pagina.child(
                     Card::new()
                         .title("Partes")
                         .meta(format!("{} partes", p.parts.len()))
+                        .badge(vm::rotulo_guarda(achados), vm::tom_guarda(achados))
+                        .action(recalcular)
                         .child(partes),
                 );
                 if !p.worktrees.is_empty() {
@@ -620,10 +670,25 @@ impl CaronteView {
                     for l in vm::linhas_worktrees(&p.worktrees) {
                         trees = trees.row(l.into_iter().map(SharedString::from));
                     }
+                    let ver_planos = {
+                        let e = entidade.clone();
+                        Button::new("ver-planos", "Ver planos")
+                            .kind(ButtonKind::Ghost)
+                            .icon(IconName::ScrollText)
+                            .on_click(move |_, _, cx| {
+                                e.update(cx, |v, cx| {
+                                    v.mudar_tela(Tela::Planos, cx);
+                                    cx.notify();
+                                });
+                            })
+                    };
+                    let com_patch = p.worktrees.iter().filter(|w| w.patch.is_some()).count();
                     pagina = pagina.child(
                         Card::new()
                             .title("Worktrees")
                             .meta(format!("{}", p.worktrees.len()))
+                            .badge(format!("{com_patch} com patch"), hades_ui::Tone::Neutral)
+                            .action(ver_planos)
                             .child(trees),
                     );
                 }
@@ -827,11 +892,11 @@ fn colunas(nomes: &[&str]) -> Vec<(SharedString, Align)> {
 impl Render for CaronteView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = palette(cx);
-        let (esquerda, direita) = self.rodape();
+        let (esquerda, versao) = self.rodape();
         let rail = self.rail(cx);
         let corpo = match self.tela {
             Tela::Planos => self.tela_planos(cx),
-            Tela::Previa => self.tela_previa(),
+            Tela::Previa => self.tela_previa(cx),
             Tela::Pacotes => self.tela_pacotes(cx),
             Tela::Retomar => self.tela_retomar(),
         };
@@ -850,7 +915,7 @@ impl Render for CaronteView {
             .bg(p.bg)
             .text_color(p.fg)
             .child(div().flex_1().flex().min_h_0().child(rail).child(corpo))
-            .child(StatusBar::new(esquerda, direita))
+            .child(StatusBar::new(esquerda, "").version(versao))
     }
 }
 

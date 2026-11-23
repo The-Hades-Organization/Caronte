@@ -129,6 +129,25 @@ pub fn retomada(
     })
 }
 
+/// `<branch> @ <sha curto>` do repositório em `cwd`; `None` fora de um repositório ou sem `git`.
+pub fn referencia_git(cwd: &Path) -> Option<String> {
+    let saida = |args: &[&str]| {
+        let o = std::process::Command::new("git")
+            .arg("-C")
+            .arg(cwd)
+            .args(args)
+            .output()
+            .ok()?;
+        o.status
+            .success()
+            .then(|| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            .filter(|t| !t.is_empty())
+    };
+    let ramo = saida(&["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let sha = saida(&["rev-parse", "--short", "HEAD"])?;
+    Some(format!("{ramo} @ {sha}"))
+}
+
 pub fn agora_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
