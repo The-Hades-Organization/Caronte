@@ -108,6 +108,12 @@ impl CaronteView {
                         v.planos = planos;
                         v.aviso = None;
                         v.conferir_selecao();
+                        if v.tela == Tela::Previa
+                            && v.plano.is_some()
+                            && matches!(v.previa, EstadoPrevia::SemPlano)
+                        {
+                            v.carregar_previa(cx);
+                        }
                     }
                     Err(e) => v.aviso = Some(e),
                 }
@@ -776,6 +782,9 @@ pub fn abrir_janela(cx: &mut App, tela: Tela) {
         let view: Entity<CaronteView> = cx.new(|cx| {
             CaronteView::iniciar(cx);
             let mut v = CaronteView::new(Env::from_process(), cwd, cx.focus_handle(), cx);
+            if let Some(nome) = std::env::args().skip_while(|a| a != "--plano").nth(1) {
+                v.selecionar_plano(nome, cx);
+            }
             v.mudar_tela(tela, cx);
             v
         });
