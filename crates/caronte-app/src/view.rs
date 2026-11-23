@@ -39,6 +39,10 @@ struct CfgEstado {
     erro: Option<String>,
 }
 
+mod embed;
+
+pub use embed::telas;
+
 pub struct CaronteView {
     env: Env,
     fonte: Rc<dyn FonteDeConfig>,
@@ -66,6 +70,8 @@ pub struct CaronteView {
     estacionando: Estacionando,
     recolhida: bool,
     referencia_git: Option<String>,
+    /// Dentro do painel com as Configurações dele: a tela de Configurações própria some.
+    integrado: bool,
 }
 
 impl CaronteView {
@@ -95,6 +101,7 @@ impl CaronteView {
             estacionando: Estacionando::default(),
             recolhida: false,
             referencia_git: service::referencia_git(&cwd),
+            integrado: false,
             env,
             cwd,
         };
@@ -539,13 +546,7 @@ impl CaronteView {
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
         let entidade = cx.entity();
         let item_da_tela = |t: Tela| {
-            let item = RailItem::new(t.rotulo()).icon(match t {
-                Tela::Planos => IconName::ScrollText,
-                Tela::Previa => IconName::Eye,
-                Tela::Pacotes => IconName::Package,
-                Tela::Retomar => IconName::RotateCcw,
-                Tela::Config => IconName::SlidersHorizontal,
-            });
+            let item = RailItem::new(t.rotulo()).icon(t.icone());
             match t {
                 Tela::Planos => item.badge(self.planos.len().to_string()),
                 Tela::Pacotes if !self.pacotes.is_empty() => {
@@ -1050,21 +1051,33 @@ fn colunas(nomes: &[&str]) -> Vec<(SharedString, Align)> {
         .collect()
 }
 
-impl Render for CaronteView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.tela == Tela::Config {
-            self.garantir_config(window, cx);
-        }
-        let p = palette(cx);
-        let (esquerda, versao) = self.rodape();
-        let rail = self.rail(cx);
-        let corpo = match self.tela {
+impl CaronteView {
+    /// Miolo da tela `tela`, sem trilho nem barra de status.
+    fn corpo(
+        &mut self,
+        tela: Tela,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        match tela {
             Tela::Planos => self.tela_planos(cx),
             Tela::Previa => self.tela_previa(cx),
             Tela::Pacotes => self.tela_pacotes(cx),
             Tela::Retomar => self.tela_retomar(),
-            Tela::Config => self.tela_config(cx).into_any_element(),
-        };
+            Tela::Config => {
+                self.garantir_config(window, cx);
+                self.tela_config(cx).into_any_element()
+            }
+        }
+    }
+}
+
+impl Render for CaronteView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = palette(cx);
+        let (esquerda, versao) = self.rodape();
+        let rail = self.rail(cx);
+        let corpo = self.corpo(self.tela, window, cx);
         div()
             .id("caronte")
             .track_focus(&self.foco)

@@ -5,6 +5,6 @@ mod service;
 mod view;
 pub mod vm;
 
-pub use view::{CaronteView, abrir_janela};
+pub use view::{CaronteView, abrir_janela, telas};
 
 pub const NOME: &str = "Caronte";

@@ -8,6 +8,7 @@ use caronte_core::guard::Finding;
 use caronte_core::manifest::WorktreeInfo;
 use caronte_core::plan::{PackPreview, PlanAgent, Readiness};
 use hades_ui::Tone;
+use hades_ui::icons::IconName;
 
 /// Teto de pacotes listados (PC:45, `MAX_PACKAGES`).
 pub const MAX_PACOTES: usize = 200;
@@ -48,7 +49,7 @@ impl Tela {
     /// Telas com atalho numérico; Configurações fica de fora porque tem campos de texto.
     pub const COM_ATALHO: [Tela; 4] = [Tela::Planos, Tela::Previa, Tela::Pacotes, Tela::Retomar];
 
-    pub fn rotulo(self) -> &'static str {
+    pub const fn rotulo(self) -> &'static str {
         match self {
             Tela::Planos => "Planos",
             Tela::Previa => "Prévia do pack",
@@ -58,15 +59,29 @@ impl Tela {
         }
     }
 
-    pub fn de_flag(nome: &str) -> Option<Tela> {
-        match nome {
-            "planos" => Some(Tela::Planos),
-            "previa" => Some(Tela::Previa),
-            "pacotes" => Some(Tela::Pacotes),
-            "retomar" => Some(Tela::Retomar),
-            "configuracoes" => Some(Tela::Config),
-            _ => None,
+    /// Id estável da tela: o mesmo nome da flag `--tela` e do item no trilho do painel.
+    pub const fn id(self) -> &'static str {
+        match self {
+            Tela::Planos => "planos",
+            Tela::Previa => "previa",
+            Tela::Pacotes => "pacotes",
+            Tela::Retomar => "retomar",
+            Tela::Config => "configuracoes",
         }
+    }
+
+    pub const fn icone(self) -> IconName {
+        match self {
+            Tela::Planos => IconName::ScrollText,
+            Tela::Previa => IconName::Eye,
+            Tela::Pacotes => IconName::Package,
+            Tela::Retomar => IconName::RotateCcw,
+            Tela::Config => IconName::SlidersHorizontal,
+        }
+    }
+
+    pub fn de_flag(nome: &str) -> Option<Tela> {
+        Tela::TODAS.into_iter().find(|t| t.id() == nome)
     }
 
     pub fn de_rotulo(rotulo: &str) -> Option<Tela> {

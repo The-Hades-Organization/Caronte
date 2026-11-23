@@ -10,7 +10,7 @@ Caronte: ferramenta do Hades, reescrita em Rust.
 
 ## Estado
 
-F0, em construção. Só o esqueleto do workspace existe; nada da ferramenta foi portado ainda.
+CLI (`pack`, `unpack`, `brief`) e app com as telas Planos, Prévia do pack, Pacotes, Retomar e Configurações; a view também roda embutida no painel do Hades (`FerramentaEmbutida`, Hades-UI v0.3.0, hades-core v0.2.7).
 
 ## Relação com o Hades-Skill
 

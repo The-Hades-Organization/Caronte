@@ -269,6 +269,7 @@ pub fn estacionar(
             cwd: Some(onde),
             timeout: Some(espera_do_park(env, cwd)),
             max_buffer: None,
+            ..RunOptions::default()
         },
     );
     if r.timed_out {
