@@ -1,1 +1,5 @@
 target/
+.design-sync-reports/
+handoff.md
+reports/
+briefs/
