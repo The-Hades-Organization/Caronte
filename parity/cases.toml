@@ -442,3 +442,15 @@ fixture = "unpack"
 setup = "setup-unpack-header.sh"
 env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
 compare = ["stdout", "exit", "files:trees/**", "files:plans/**", "files:work/**", "files:clone/.git/refs/heads/**"]
+
+[[case]]
+id = "pack.cross"
+kind = "cross"
+fixture = "orq"
+setup = "setup-orq.sh"
+consume_fixture = "clone-bare"
+produce = ["pack", "demo", "--out", "{xfer}/p.caronte"]
+consume = ["unpack", "{xfer}/p.caronte", "--work-root", "work", "--plans", "plans", "--worktrees", "trees", "--clone", "clone"]
+ts_cmd = ["{skill}/src/cli.ts", "caronte"]
+env = { HADES_NOW = "2026-11-20T12:00:00Z", HADES_CARONTE_SCRYPT_LOG2N = "14", HADES_MODEL_IMPL = "claude-sonnet-5-5", HADES_EFFORT_IMPL = "medium", HADES_CARONTE_PASSWORD = "senha de teste 123" }
+compare = ["exit", "files:trees/**", "files:plans/**", "files:clone/refs/heads/**"]
