@@ -123,6 +123,17 @@ impl CaronteView {
         .detach();
     }
 
+    /// Nome solto de arquivo vira o caminho dentro da pasta de pacotes; caminho com diretório passa como veio.
+    fn caminho_de_pacote(&self, arq: &str) -> String {
+        if arq.contains('/') {
+            return arq.to_owned();
+        }
+        service::pasta_de_pacotes(&self.env, &self.cwd)
+            .join(arq)
+            .display()
+            .to_string()
+    }
+
     /// Plano que sumiu da pasta deixa de ser o selecionado.
     fn conferir_selecao(&mut self) {
         if let Some(nome) = &self.plano
@@ -852,6 +863,9 @@ pub fn abrir_janela(cx: &mut App, tela: Tela) {
             let mut v = CaronteView::new(Env::from_process(), cwd, cx.focus_handle(), cx);
             if let Some(nome) = std::env::args().skip_while(|a| a != "--plano").nth(1) {
                 v.selecionar_plano(nome, cx);
+            }
+            if let Some(arq) = std::env::args().skip_while(|a| a != "--pacote").nth(1) {
+                v.pacote = Some(v.caminho_de_pacote(&arq));
             }
             v.mudar_tela(tela, cx);
             v
