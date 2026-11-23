@@ -11,8 +11,8 @@ use gpui::{
 use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
-    Align, Button, CopyButton, DataTable, EmptyState, PageHeader, Rail, RailBrand, RailGroup,
-    RailItem, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
+    Align, Button, Card, DataTable, EmptyState, Page, PageHeader, Rail, RailBrand, RailGroup,
+    RailItem, RailStat, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock,
 };
 use hades_ui::icons::IconName;
 use hades_ui::palette;
@@ -336,13 +336,6 @@ impl CaronteView {
         .detach();
     }
 
-    fn titulo(&self) -> String {
-        match &self.plano {
-            Some(p) => format!("Caronte · {p}"),
-            None => "Caronte".to_owned(),
-        }
-    }
-
     fn rodape(&self) -> (String, String) {
         let ocupado = self.t_planos.carregando() || self.t_previa.carregando();
         let esquerda = self.aviso.clone().unwrap_or_else(|| {
@@ -353,6 +346,21 @@ impl CaronteView {
             }
         });
         (esquerda, format!("caronte {}", env!("CARGO_PKG_VERSION")))
+    }
+
+    fn estado_rail(&self) -> RailStat {
+        let prontos = self
+            .planos
+            .iter()
+            .filter(|p| !p.agentes.is_empty() && p.faltam().is_empty())
+            .count();
+        let total = self.planos.len();
+        let fracao = if total == 0 {
+            0.0
+        } else {
+            prontos as f32 / total as f32
+        };
+        RailStat::new("Planos prontos", format!("{prontos} de {total}")).fraction(fracao)
     }
 
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
@@ -378,7 +386,8 @@ impl CaronteView {
             RailGroup::new("Preparo", preparo),
             RailGroup::new("Pacote", pacote),
         ])
-        .brand(RailBrand::hades().subtitle("caronte"))
+        .brand(RailBrand::new("Caronte").subtitle("planos e pacotes"))
+        .footer(self.estado_rail())
         .selected(self.tela.rotulo())
         .on_select(move |rotulo, _, cx| {
             if let Some(t) = Tela::de_rotulo(rotulo) {
@@ -392,7 +401,6 @@ impl CaronteView {
 
     fn tela_planos(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let entidade = cx.entity();
-        let mut coluna = div().flex().flex_col().gap(px(space::LG));
         let agente_sel = self.plano_atual().and_then(|p| {
             let nome = self.agente.as_ref()?;
             p.agentes.iter().find(|a| &a.name == nome)
@@ -417,11 +425,14 @@ impl CaronteView {
                 .icon(IconName::CirclePause)
                 .disabled("Selecione um agente"),
         };
-        coluna = coluna.child(PageHeader::new("Planos").action(estacionar));
+        let cabecalho = PageHeader::new("Planos")
+            .subtitle("Planos de orquestração e a prontidão dos agentes para o pack")
+            .action(estacionar);
+        let pagina = Page::new("planos").header(cabecalho);
 
         if self.planos.is_empty() {
-            return coluna
-                .child(EmptyState::new("Nenhum plano").hint(
+            return pagina
+                .child(EmptyState::new("Nenhum plano").fill().hint(
                     "Os planos ficam em ~/.claude/hades/plans; o app só lê o estado e mostra os comandos.",
                 ))
                 .into_any_element();
@@ -448,17 +459,23 @@ impl CaronteView {
                 cx.notify();
             });
         });
-        coluna = coluna.child(tabela);
 
         let Some(resumo) = self.plano_atual() else {
-            return coluna.into_any_element();
+            return pagina
+                .child(tabela.fill("planos-tabela"))
+                .into_any_element();
         };
-        coluna = coluna.child(PageHeader::new(resumo.nome.clone()));
+        let pagina = pagina.child(tabela);
         if resumo.agentes.is_empty() {
-            return coluna
-                .child(EmptyState::new("Nenhum agente ligado").hint(
-                    "Nenhum registro de agente cita este plano; o pack levaria só os arquivos do plano.",
-                ))
+            return pagina
+                .child(
+                    Card::new()
+                        .title(resumo.nome.clone())
+                        .fill()
+                        .child(EmptyState::new("Nenhum agente ligado").fill().hint(
+                            "Nenhum registro de agente cita este plano; o pack levaria só os arquivos do plano.",
+                        )),
+                )
                 .into_any_element();
         }
         let mut agentes = DataTable::new(colunas(&COLUNAS_AGENTES));
@@ -482,72 +499,91 @@ impl CaronteView {
                 cx.notify();
             });
         });
-        coluna = coluna.child(agentes);
 
-        let mut selos = div().flex().gap(px(space::SM));
+        let mut selos = div().flex().flex_wrap().gap(px(space::SM));
         for a in &resumo.agentes {
             selos = selos.child(StatusBadge::new(
                 format!("{} · {}", a.name, vm::rotulo_prontidao(a.readiness)),
                 vm::tom_prontidao(a.readiness),
             ));
         }
-        coluna = coluna.child(selos);
 
+        let mut card = Card::new()
+            .title(resumo.nome.clone())
+            .meta(format!("{} agentes", resumo.agentes.len()))
+            .child(agentes)
+            .child(selos);
         let faltam = resumo.faltam();
         if !faltam.is_empty() {
             let mut term = TermBlock::new().dim("# estacione antes de empacotar");
+            let mut copia = Vec::new();
             for a in faltam {
-                term = term.line(vm::comando_park(&a.name));
+                let cmd = vm::comando_park(&a.name);
+                copia.push(cmd.clone());
+                term = term.line(cmd);
             }
-            coluna = coluna.child(term);
+            card = card.child(term.copy("copiar-park", copia.join("\n")));
         }
-        coluna.into_any_element()
+        pagina.child(card).into_any_element()
     }
 
     fn tela_previa(&self) -> gpui::AnyElement {
-        let mut coluna = div().flex().flex_col().gap(px(space::LG));
         let titulo = self
             .plano
             .clone()
             .map_or_else(|| "Prévia do pack".to_owned(), |p| format!("Prévia · {p}"));
-        coluna = coluna.child(PageHeader::new(titulo));
+        let pagina =
+            Page::new("previa").header(PageHeader::new(titulo).subtitle(
+                "O que entra no pacote e o resultado da guarda de segredo, antes do pack",
+            ));
         let Some(nome) = self.plano.clone() else {
-            return coluna
+            return pagina
                 .child(
                     EmptyState::new("Nenhum plano selecionado")
+                        .fill()
                         .hint("Escolha um plano na tela Planos para ver o que entra no pacote."),
                 )
                 .into_any_element();
         };
         match &self.previa {
-            EstadoPrevia::SemPlano => coluna
+            EstadoPrevia::SemPlano => pagina
                 .child(
-                    EmptyState::new("Sem prévia").hint("Volte à tela Planos e escolha um plano."),
+                    EmptyState::new("Sem prévia")
+                        .fill()
+                        .hint("Volte à tela Planos e escolha um plano."),
                 )
                 .into_any_element(),
-            EstadoPrevia::Carregando => coluna
+            EstadoPrevia::Carregando => pagina
                 .child(carregando("previa", "Calculando a prévia"))
                 .into_any_element(),
             EstadoPrevia::NaoPronta(faltam) => {
                 let mut term = TermBlock::new().dim("# estacione antes de empacotar");
+                let mut copia = Vec::new();
                 for a in faltam {
-                    term = term.line(vm::comando_park(a));
+                    let cmd = vm::comando_park(a);
+                    copia.push(cmd.clone());
+                    term = term.line(cmd);
                 }
-                coluna
+                pagina
                     .child(EmptyState::new("Agentes ainda rodando").hint(
                         "O pack recusa enquanto algum agente do plano não estiver estacionado.",
                     ))
-                    .child(term)
+                    .child(term.copy("copiar-park", copia.join("\n")))
                     .into_any_element()
             }
-            EstadoPrevia::Falhou(motivo) => coluna
-                .child(EmptyState::new("A prévia falhou").hint(motivo.clone()))
+            EstadoPrevia::Falhou(motivo) => pagina
+                .child(
+                    EmptyState::new("A prévia falhou")
+                        .fill()
+                        .hint(motivo.clone()),
+                )
                 .into_any_element(),
             EstadoPrevia::Pronta(p) => {
                 let achados = p.blocked.len();
-                coluna = coluna.child(
+                let mut pagina = pagina.child(
                     div()
                         .flex()
+                        .flex_wrap()
                         .gap(px(space::SM))
                         .child(StatusBadge::new(
                             format!("guarda de segredo: {}", vm::rotulo_guarda(achados)),
@@ -562,13 +598,23 @@ impl CaronteView {
                 for l in vm::linhas_partes(p) {
                     partes = partes.row(l.into_iter().map(SharedString::from));
                 }
-                coluna = coluna.child(partes);
+                pagina = pagina.child(
+                    Card::new()
+                        .title("Partes")
+                        .meta(format!("{} partes", p.parts.len()))
+                        .child(partes),
+                );
                 if !p.worktrees.is_empty() {
                     let mut trees = DataTable::new(colunas(&COLUNAS_WORKTREES));
                     for l in vm::linhas_worktrees(&p.worktrees) {
                         trees = trees.row(l.into_iter().map(SharedString::from));
                     }
-                    coluna = coluna.child(trees);
+                    pagina = pagina.child(
+                        Card::new()
+                            .title("Worktrees")
+                            .meta(format!("{}", p.worktrees.len()))
+                            .child(trees),
+                    );
                 }
                 let allow = vm::sugestao_allow(&p.blocked);
                 if achados > 0 {
@@ -576,20 +622,32 @@ impl CaronteView {
                     for l in vm::linhas_achados(&p.blocked) {
                         tabela = tabela.row(l.into_iter().map(SharedString::from));
                     }
-                    coluna = coluna.child(tabela);
+                    pagina = pagina.child(
+                        Card::new()
+                            .title("Achados")
+                            .meta(format!("{achados}"))
+                            .child(tabela),
+                    );
                 }
                 let comando = vm::comando_pack(&nome, &[]);
+                let mut copia = comando.clone();
                 let mut term = TermBlock::new()
                     .dim("# a senha vai no terminal, sem eco; o app não guarda nem repassa senha")
-                    .line(comando.clone());
+                    .line(comando);
                 if !allow.is_empty() {
+                    let com_allow = vm::comando_pack(&nome, &allow);
                     term = term
                         .dim("# só se o dono confirmar que o achado é esperado:")
-                        .line(vm::comando_pack(&nome, &allow));
+                        .line(com_allow);
                 }
-                coluna
-                    .child(term)
-                    .child(CopyButton::new("copiar-pack", comando))
+                copia.push('\n');
+                pagina
+                    .child(
+                        Card::new()
+                            .title("Comando")
+                            .description("Rode no terminal: a senha nunca passa pelo app.")
+                            .child(term.copy("copiar-pack", copia.trim_end().to_owned())),
+                    )
                     .into_any_element()
             }
         }
@@ -599,15 +657,14 @@ impl CaronteView {
 impl CaronteView {
     fn tela_pacotes(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let entidade = cx.entity();
-        let mut coluna = div()
-            .flex()
-            .flex_col()
-            .gap(px(space::LG))
-            .child(PageHeader::new("Pacotes"));
+        let pagina = Page::new("pacotes").header(
+            PageHeader::new("Pacotes")
+                .subtitle("Pacotes .caronte gerados; o unpack roda no terminal"),
+        );
         if self.pacotes.is_empty() {
             let pasta = service::pasta_de_pacotes(&self.env, &self.cwd);
-            return coluna
-                .child(EmptyState::new("Nenhum pacote").hint(format!(
+            return pagina
+                .child(EmptyState::new("Nenhum pacote").fill().hint(format!(
                     "Os pacotes .caronte ficam em {}; gere um com o pack no terminal.",
                     pasta.display()
                 )))
@@ -630,27 +687,35 @@ impl CaronteView {
                 cx.notify();
             });
         });
-        coluna = coluna.child(tabela);
         let Some(p) = self
             .pacote
             .as_ref()
             .and_then(|c| self.pacotes.iter().find(|p| &p.caminho == c))
         else {
-            return coluna
+            return pagina
+                .child(tabela)
                 .child(
-                    EmptyState::new("Selecione um pacote")
-                        .hint("O app mostra o comando de unpack; a senha é pedida só no terminal."),
+                    Card::new().title("Unpack").fill().child(
+                        EmptyState::new("Selecione um pacote").fill().hint(
+                            "O app mostra o comando de unpack; a senha é pedida só no terminal.",
+                        ),
+                    ),
                 )
                 .into_any_element();
         };
         let comando = vm::comando_unpack(&p.caminho);
-        coluna
+        pagina
+            .child(tabela)
             .child(
-                TermBlock::new()
-                    .dim("# a senha vai no terminal, sem eco; o app não abre nem decifra pacote")
-                    .line(comando.clone()),
+                Card::new().title("Unpack").meta(p.caminho.clone()).child(
+                    TermBlock::new()
+                        .dim(
+                            "# a senha vai no terminal, sem eco; o app não abre nem decifra pacote",
+                        )
+                        .line(comando.clone())
+                        .copy("copiar-unpack", comando),
+                ),
             )
-            .child(CopyButton::new("copiar-unpack", comando))
             .into_any_element()
     }
 
@@ -659,47 +724,58 @@ impl CaronteView {
             .plano
             .clone()
             .map_or_else(|| "Retomar".to_owned(), |p| format!("Retomar · {p}"));
-        let coluna = div()
-            .flex()
-            .flex_col()
-            .gap(px(space::LG))
-            .child(PageHeader::new(titulo));
+        let pagina = Page::new("retomar").header(
+            PageHeader::new(titulo)
+                .subtitle("Prompt do orquestrador e passos para retomar os agentes estacionados"),
+        );
         match &self.retomada {
-            EstadoRetomada::SemPlano => coluna
+            EstadoRetomada::SemPlano => pagina
                 .child(
                     EmptyState::new("Nenhum plano selecionado")
+                        .fill()
                         .hint("Escolha um plano na tela Planos para ver o prompt de retomada."),
                 )
                 .into_any_element(),
-            EstadoRetomada::Carregando => coluna
+            EstadoRetomada::Carregando => pagina
                 .child(carregando("retomada", "Montando a retomada"))
                 .into_any_element(),
-            EstadoRetomada::Falhou(motivo) => coluna
-                .child(EmptyState::new("A retomada falhou").hint(motivo.clone()))
+            EstadoRetomada::Falhou(motivo) => pagina
+                .child(
+                    EmptyState::new("A retomada falhou")
+                        .fill()
+                        .hint(motivo.clone()),
+                )
                 .into_any_element(),
             EstadoRetomada::Pronta(r) => {
-                let mut coluna = coluna;
+                let mut pagina = pagina;
                 if r.agentes.is_empty() {
-                    coluna = coluna.child(EmptyState::new("Nenhum agente estacionado").hint(
+                    pagina = pagina.child(EmptyState::new("Nenhum agente estacionado").hint(
                         "Depois do unpack, os agentes estacionados do plano aparecem aqui com os passos para retomar.",
                     ));
                 }
-                for a in &r.agentes {
-                    coluna = coluna.child(
-                        TermBlock::new()
-                            .dim(format!("# {}", a.nome))
-                            .line(a.workspace.clone())
-                            .line(a.iniciar.clone())
-                            .line(a.adotar.clone()),
+                for (i, a) in r.agentes.iter().enumerate() {
+                    let copia =
+                        [a.workspace.as_str(), a.iniciar.as_str(), a.adotar.as_str()].join("\n");
+                    pagina = pagina.child(
+                        Card::new().title(a.nome.clone()).child(
+                            TermBlock::new()
+                                .line(a.workspace.clone())
+                                .line(a.iniciar.clone())
+                                .line(a.adotar.clone())
+                                .copy(format!("copiar-agente-{i}"), copia),
+                        ),
                     );
                 }
-                let mut prompt = TermBlock::new().dim("# prompt do orquestrador");
+                let mut prompt = TermBlock::new();
                 for linha in r.prompt.lines() {
                     prompt = prompt.line(linha.to_owned());
                 }
-                coluna
-                    .child(prompt)
-                    .child(CopyButton::new("copiar-prompt", r.prompt.clone()))
+                pagina
+                    .child(
+                        Card::new()
+                            .title("Prompt do orquestrador")
+                            .child(prompt.copy("copiar-prompt", r.prompt.clone())),
+                    )
                     .into_any_element()
             }
         }
@@ -762,15 +838,7 @@ impl Render for CaronteView {
             .flex_col()
             .bg(p.bg)
             .text_color(p.fg)
-            .child(TopBar::new(self.titulo()).trailing("gpui"))
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .min_h_0()
-                    .child(rail)
-                    .child(div().flex_1().p(px(space::LG)).child(corpo)),
-            )
+            .child(div().flex_1().flex().min_h_0().child(rail).child(corpo))
             .child(StatusBar::new(esquerda, direita))
     }
 }
