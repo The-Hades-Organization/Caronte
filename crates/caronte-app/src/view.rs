@@ -11,8 +11,8 @@ use gpui::{
 use hades_core::Env;
 use hades_core::work::WorkEnv;
 use hades_ui::components::{
-    Align, Button, CopyButton, DataTable, EmptyState, PageHeader, Rail, RailGroup, RailItem,
-    Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
+    Align, Button, CopyButton, DataTable, EmptyState, IconName, PageHeader, Rail, RailBrand,
+    RailGroup, RailItem, Skeleton, Spinner, StatusBadge, StatusBar, TermBlock, TopBar,
 };
 use hades_ui::palette;
 use hades_ui::tokens::space;
@@ -351,7 +351,12 @@ impl CaronteView {
     fn rail(&self, cx: &mut Context<Self>) -> Rail {
         let entidade = cx.entity();
         let item_da_tela = |t: Tela| {
-            let item = RailItem::new(t.rotulo());
+            let item = RailItem::new(t.rotulo()).icon(match t {
+                Tela::Planos => IconName::ScrollText,
+                Tela::Previa => IconName::Eye,
+                Tela::Pacotes => IconName::Package,
+                Tela::Retomar => IconName::RotateCcw,
+            });
             match t {
                 Tela::Planos => item.badge(self.planos.len().to_string()),
                 Tela::Pacotes if !self.pacotes.is_empty() => {
@@ -366,6 +371,7 @@ impl CaronteView {
             RailGroup::new("Preparo", preparo),
             RailGroup::new("Pacote", pacote),
         ])
+        .brand(RailBrand::hades().subtitle("caronte"))
         .selected(self.tela.rotulo())
         .on_select(move |rotulo, _, cx| {
             if let Some(t) = Tela::de_rotulo(rotulo) {
@@ -394,12 +400,15 @@ impl CaronteView {
                 let e = entidade.clone();
                 Button::new("estacionar", format!("Estacionar {}", a.name))
                     .primary()
+                    .icon(IconName::CirclePause)
                     .on_click(move |_, _, cx| e.update(cx, |v, cx| v.estacionar(cx)))
             }
-            (Err(m), _) => Button::new("estacionar", "Estacionar").disabled(m),
-            (Ok(()), None) => {
-                Button::new("estacionar", "Estacionar").disabled("Selecione um agente")
-            }
+            (Err(m), _) => Button::new("estacionar", "Estacionar")
+                .icon(IconName::CirclePause)
+                .disabled(m),
+            (Ok(()), None) => Button::new("estacionar", "Estacionar")
+                .icon(IconName::CirclePause)
+                .disabled("Selecione um agente"),
         };
         coluna = coluna.child(PageHeader::new("Planos").action(estacionar));
 
